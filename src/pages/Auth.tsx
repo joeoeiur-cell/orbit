@@ -15,8 +15,8 @@ import {
 } from "@/components/ui/input-otp";
 
 import { useAuth } from "@/hooks/use-auth";
-import logo from "@/assets/logo.svg";
-import { ArrowRight, Loader2, Mail, UserX } from "lucide-react";
+
+import { ArrowRight, Layers, Loader2, Mail, UserX } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
@@ -121,18 +121,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             <>
               <CardHeader className="text-center">
               <div className="flex justify-center">
-                    <img
-                      src={logo}
-                      alt="Lock Icon"
-                      width={64}
-                      height={64}
-                      className="rounded-lg mb-4 mt-4 cursor-pointer"
-                      onClick={() => navigate("/")}
-                    />
+                    <button type="button" aria-label="Orbit home" className="orbit-brand my-4" onClick={() => navigate("/")}><span className="brand-mark"><Layers size={21} /></span>orbit</button>
                   </div>
-                <CardTitle className="text-xl">Get Started</CardTitle>
+                <CardTitle className="text-xl">Welcome to your orbit</CardTitle>
                 <CardDescription>
-                  Enter your email to log in or sign up
+                  Enter your workspace, then connect your Puter account
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleEmailSubmit}>
