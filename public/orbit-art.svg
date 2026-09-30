@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="180" viewBox="0 0 480 180" fill="none">
+<defs><radialGradient id="sphere" cx=".3" cy=".25" r=".8"><stop stop-color="#e8eddd"/><stop offset=".5" stop-color="#afbd96"/><stop offset="1" stop-color="#647b51"/></radialGradient><linearGradient id="paper" x1="230" y1="25" x2="274" y2="145" gradientUnits="userSpaceOnUse"><stop stop-color="#fffef8"/><stop offset="1" stop-color="#e0e5d7"/></linearGradient><filter id="shadow"><feGaussianBlur stdDeviation="9"/></filter></defs>
+<ellipse cx="240" cy="151" rx="64" ry="8" fill="#73845f" opacity=".12" filter="url(#shadow)"/>
+<path d="M64 90H416M240 12V168" stroke="#dfe5d5" stroke-dasharray="2 6"/>
+<ellipse cx="240" cy="90" rx="157" ry="47" transform="rotate(-14 240 90)" stroke="#d0d9c0"/>
+<ellipse cx="240" cy="90" rx="116" ry="68" transform="rotate(23 240 90)" stroke="#e0dccb"/>
+<circle cx="240" cy="90" r="53" fill="url(#sphere)"/>
+<path d="M192 88c27 15 65 23 100 12M207 46c-7 31 4 67 32 94M261 42c-13 23-14 67-1 96" stroke="#fff" opacity=".17"/>
+<rect x="210" y="53" width="61" height="76" rx="11" transform="rotate(-12 210 53)" fill="url(#paper)" stroke="#f4f5ea"/>
+<g transform="translate(222 62) rotate(-12)"><rect width="37" height="8" rx="3" fill="#bdc9aa"/><path d="M0 22h30M0 30h22" stroke="#acb99b" stroke-width="2" stroke-linecap="round"/><rect y="42" width="15" height="15" rx="4" fill="#8ca174"/><path d="m4 50 3 3 5-6" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 46h13M22 53h9" stroke="#bcc5ad" stroke-width="2" stroke-linecap="round"/></g>
+<circle cx="94" cy="123" r="8" fill="#9aac83" stroke="#f8faf2" stroke-width="4"/>
+<circle cx="380" cy="61" r="6" fill="#c7b695" stroke="#faf9f4" stroke-width="3"/>
+<rect x="134" y="31" width="29" height="29" rx="8" transform="rotate(-10 134 31)" fill="#f8f9f3" stroke="#dce3d0"/><path d="m145 40-5 5 5 4m8-10 5 4-5 5" stroke="#8a9c73" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="318" y="119" width="32" height="29" rx="8" transform="rotate(9 318 119)" fill="#f9f7f0" stroke="#e3dcca"/><path d="M325 128h15m-15 5h10m-10 5h13" stroke="#b29f7e" stroke-width="1.5" stroke-linecap="round"/>
+<circle cx="181" cy="144" r="2" fill="#bcc8a9"/><circle cx="290" cy="30" r="2" fill="#baa889"/>
+</svg>
