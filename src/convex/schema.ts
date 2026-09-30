@@ -32,6 +32,13 @@ const schema = defineSchema(
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
+    greetings: defineTable({
+      userId: v.id("users"),
+      recipient: v.string(),
+      message: v.string(),
+      theme: v.union(v.literal("sunshine"), v.literal("coral"), v.literal("mint")),
+    }).index("by_user", ["userId"]),
+
     // add other tables here
 
     // tableName: defineTable({
