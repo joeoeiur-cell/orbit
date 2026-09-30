@@ -4,6 +4,49 @@ export interface Model {
   provider: string;
   context?: number;
 }
+// Curated starting points, not a universal benchmark ranking. Reviewed 2026-09-30
+// against provider release pages. Only exact models returned by Puter are shown.
+// https://www.anthropic.com/claude-opus-5-5
+// https://www.anthropic.com/claude-sonnet-5-5
+// https://developers.openai.com/api/docs/models/gpt-6.1-sol
+// https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash
+export const MODEL_PICKS = [
+  { ids: ["claude-opus-5-5", "claude-opus-5.5"], family: "opus", label: "Complex builds", detail: "Careful reasoning and ambitious coding projects.", tone: "clay" },
+  { ids: ["gpt-6.1-sol"], family: "gpt-sol", label: "New release", detail: "A strong starting point for coding and knowledge work.", tone: "sage" },
+  { ids: ["gpt-6-astra"], family: "gpt-astra", label: "Deep reasoning", detail: "OpenAI’s flagship for difficult, multi-step work.", tone: "sage" },
+  { ids: ["claude-sonnet-5-5", "claude-sonnet-5.5"], family: "sonnet", label: "Everyday coding", detail: "Fast iteration, bug fixes, and thoughtful design.", tone: "clay" },
+  { ids: ["gemini-3.8-flash"], family: "gemini-flash", label: "Fast & capable", detail: "Quick responses with a generous context window.", tone: "blue" },
+  { ids: ["claude-fable-5-1", "claude-fable-5.1"], family: "fable", label: "Demanding work", detail: "A premium option for long, complex tasks.", tone: "clay" },
+  { ids: ["gpt-6-sol", "gpt-5.6-sol"], family: "gpt-sol", label: "Coding & analysis", detail: "A versatile partner for building and problem-solving.", tone: "sage" },
+  { ids: ["claude-opus-5", "claude-opus-4-8", "claude-opus-4.8", "claude-opus-4-7", "claude-opus-4.7"], family: "opus", label: "Complex builds", detail: "Thoughtful coding, writing, and reasoning.", tone: "clay" },
+  { ids: ["claude-sonnet-5", "claude-sonnet-4-6", "claude-sonnet-4.6"], family: "sonnet", label: "Everyday coding", detail: "A practical partner for daily development.", tone: "clay" },
+  { ids: ["gpt-5.5", "gpt-5.4"], family: "gpt-main", label: "All-rounder", detail: "General reasoning, writing, and coding.", tone: "sage" },
+  { ids: ["gemini-3.1-pro-preview", "gemini-3.1-pro"], family: "gemini-pro", label: "Long-context work", detail: "Explore complex ideas and larger documents.", tone: "blue" },
+  { ids: ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3-flash-preview"], family: "gemini-flash", label: "Quick thinking", detail: "A responsive option for everyday questions.", tone: "blue" },
+] as const;
+function modelKey(id: string) { return id.toLowerCase().split("/").pop() || ""; }
+export function modelPick(model: Model) {
+  const key = modelKey(model.id);
+  // Do not accidentally recommend image/audio models or pricing variants.
+  return MODEL_PICKS.find(pick => pick.ids.some(id => key === id || (key.startsWith(`${id}-`) && /^\d{8}$/.test(key.slice(id.length + 1)))));
+}
+export function sortModels(models: Model[]): Model[] {
+  const rank = (model: Model) => {
+    const pick = modelPick(model);
+    return pick ? MODEL_PICKS.indexOf(pick) * 10 + pick.ids.findIndex(id => modelKey(model.id).startsWith(id)) : 1000;
+  };
+  // Compute ranks once rather than repeating catalog matching in every comparison.
+  return models.map(model => ({ model, rank: rank(model) })).sort((a, b) => a.rank - b.rank || (a.model.name || a.model.id).localeCompare(b.model.name || b.model.id, undefined, { numeric: true }) || a.model.id.localeCompare(b.model.id)).map(entry => entry.model);
+}
+export function featuredModels(models: Model[], limit = 6): Model[] {
+  const families = new Set<string>();
+  return sortModels(models).filter(model => {
+    const pick = modelPick(model);
+    if (!pick || families.has(pick.family)) return false;
+    families.add(pick.family);
+    return true;
+  }).slice(0, limit);
+}
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string }
 export interface PuterSDK {
   env?: string;

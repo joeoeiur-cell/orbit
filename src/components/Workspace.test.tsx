@@ -1,6 +1,6 @@
 import { afterAll, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
-import type { ChatMessage, PuterSDK } from "../lib/puter";
+import type { ChatMessage, Model, PuterSDK } from "../lib/puter";
 
 const browser = new Window({ url: "https://orbit.test/", width: 1280, height: 900 });
 for (const [key, value] of Object.entries({
@@ -22,6 +22,8 @@ let releaseStream: (() => void) | undefined;
 let signInCalls = 0;
 let sent: ChatMessage[] = [];
 let sentModel = "";
+const defaultCatalog: Model[] = [{ id: "gpt-5-nano", name: "GPT Nano", provider: "OpenAI" }, { id: "test-claude", name: "Claude Test", provider: "Anthropic" }];
+let modelCatalog = defaultCatalog;
 const sdk: PuterSDK = {
   env: "web",
   auth: {
@@ -31,7 +33,7 @@ const sdk: PuterSDK = {
     signOut: () => { signedIn = false; },
   },
   ai: {
-    listModels: async () => [{ id: "gpt-5-nano", name: "GPT Nano", provider: "OpenAI" }, { id: "test-claude", name: "Claude Test", provider: "Anthropic" }],
+    listModels: async () => modelCatalog,
     chat: async (messages, options) => {
       sent = messages; sentModel = options.model;
       return (async function* () {
@@ -82,7 +84,7 @@ test("workspace connects, switches models, builds artifacts, edits tasks and man
     expect(signInCalls).toBe(1);
     expect(browser.document.querySelector(".header-connect")?.textContent).toBe("tester");
     await click("GPT Nano");
-    await click("Claude TestAnthropic · test-claude");
+    await click("Select Claude Test");
     await click("Build somethingAn idea → a working app");
     expect((browser.document.querySelector("textarea") as unknown as HTMLTextAreaElement).value).toContain("habit tracker");
     await click("Send message");
@@ -166,6 +168,51 @@ test("stopping a stream prevents late content from reaching a new conversation",
     expect(saved[0].messages[saved[0].messages.length - 1].status).toBe("stopped");
   } finally {
     releaseStream?.(); streamHold = false;
+    await act(async () => { root.unmount(); }); container.remove();
+  }
+});
+
+test("model library features current models first, filters both sections, and sends the exact selected ID", async () => {
+  const container = browser.document.createElement("div"); browser.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  modelCatalog = [
+    ...defaultCatalog,
+    { id: "openai/gpt-6.1-sol", name: "GPT-6.1 Sol", provider: "OpenAI", context: 1050000 },
+    { id: "claude-opus-5-5", name: "Claude Opus 5.5", provider: "Anthropic", context: 1000000 },
+    { id: "claude-sonnet-5", name: "Claude Sonnet 5", provider: "Anthropic" },
+    { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash", provider: "Google" },
+  ];
+  signedIn = true;
+  try {
+    await act(async () => { root.render(<BrowserRouter><Workspace /></BrowserRouter>); });
+    await click("New conversation");
+    expect(browser.document.querySelectorAll(".quick-models button")).toHaveLength(3);
+    await click("GPT Nano");
+    const featured = Array.from(browser.document.querySelectorAll(".featured-model strong")).map(el => el.textContent);
+    expect(featured).toEqual(["Claude Opus 5.5", "GPT-6.1 Sol", "Gemini 3.8 Flash", "Claude Sonnet 5"]);
+    expect(browser.document.querySelectorAll(".model-option")).toHaveLength(6);
+    const select = browser.document.querySelector('[aria-label="Filter by provider"]')!;
+    await act(async () => {
+      (select as unknown as HTMLSelectElement).value = "OpenAI";
+      select.dispatchEvent(new browser.Event("change", { bubbles: true }));
+    });
+    expect(browser.document.querySelectorAll(".model-option")).toHaveLength(2);
+    expect(browser.document.querySelector(".featured-model strong")?.textContent).toBe("GPT-6.1 Sol");
+    await type('[aria-label="Search models"]', "nothing matches");
+    expect(browser.document.querySelector(".model-no-results")?.textContent).toContain("No models found");
+    await click("Reset filters");
+    expect(browser.document.querySelectorAll(".model-option")).toHaveLength(6);
+    await type('[aria-label="Search models"]', "gpt-6.1");
+    expect(browser.document.querySelectorAll(".model-option")).toHaveLength(1);
+    await click("Select GPT-6.1 Sol");
+    expect(browser.document.querySelector('[role="dialog"]')).toBeNull();
+    await type('textarea[aria-label="Message"]', "Test the featured model");
+    await click("Send message");
+    expect(sentModel).toBe("openai/gpt-6.1-sol");
+    await click("GPT-6.1 Sol");
+    expect(browser.document.querySelector('[aria-label="Select GPT-6.1 Sol"]')?.getAttribute("aria-pressed")).toBe("true");
+  } finally {
+    modelCatalog = defaultCatalog;
     await act(async () => { root.unmount(); }); container.remove();
   }
 });

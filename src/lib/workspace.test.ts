@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Window, type HTMLButtonElement, type HTMLElement } from "happy-dom";
-import { discoverModels, errorText, extractArtifacts, previewDocument, type PuterSDK } from "./puter";
+import { discoverModels, errorText, extractArtifacts, featuredModels, modelPick, previewDocument, sortModels, type Model, type PuterSDK } from "./puter";
 import { applyArtifacts, parseConversations, restoreCheckpoint, SAMPLE_HTML, toggleTask, type Conversation } from "./workspace";
 
 const empty: Conversation = { id: "one", title: "Project", messages: [], files: [], tasks: [], checkpoints: [] };
@@ -16,6 +16,28 @@ describe("model catalog and errors", () => {
     for (const result of [{ models: [] }, [], null]) {
       await expect(discoverModels({ ai: { listModels: async () => result } } as unknown as PuterSDK)).rejects.toThrow();
     }
+  });
+  test("puts current top picks before older models without mutating the live catalog", () => {
+    const ids = ["gpt-5-nano", "claude-sonnet-5", "gemini-3.8-flash", "openai/gpt-6.1-sol", "claude-opus-5-5", "gpt-6-astra", "claude-sonnet-5-5", "gpt-5.5"];
+    const catalog: Model[] = ids.map(id => ({ id, provider: "Puter" }));
+    expect(sortModels(catalog).slice(0, 5).map(m => m.id)).toEqual(["claude-opus-5-5", "openai/gpt-6.1-sol", "gpt-6-astra", "claude-sonnet-5-5", "gemini-3.8-flash"]);
+    expect(catalog.map(m => m.id)).toEqual(ids);
+    expect(featuredModels(catalog).some(m => m.id === "claude-sonnet-5")).toBe(false);
+    expect(featuredModels(catalog, 3)).toHaveLength(3);
+  });
+  test("features only existing models, excludes modality and pricing variants, and supports dated IDs", () => {
+    const catalog: Model[] = ["anthropic/claude-opus-5.5", "claude-opus-5-5-20260922", "gpt-6.1-sol:free", "gpt-6.1-sol-imaginary", "gemini-3.8-flash-tts", "gemini-3.1-pro-image-preview", "gpt-5-nano"].map(id => ({ id, provider: "Puter" }));
+    expect(featuredModels(catalog)).toHaveLength(1);
+    expect(modelPick(catalog[1])?.family).toBe("opus");
+    for (const model of catalog.slice(2)) expect(modelPick(model)).toBeUndefined();
+    expect(featuredModels([])).toEqual([]);
+    expect(featuredModels([{ id: "custom", provider: "Local" }])).toEqual([]);
+  });
+  test("uses older available top models as fallbacks and preserves exact request IDs", () => {
+    const catalog: Model[] = ["openai/gpt-6-sol", "gpt-5.6-sol", "claude-opus-4-8", "claude-sonnet-4.6", "google/gemini-3.1-pro-preview"].map(id => ({ id, provider: "OpenRouter" }));
+    const featured = featuredModels(catalog);
+    expect(featured.map(m => m.id)).toEqual(["openai/gpt-6-sol", "claude-opus-4-8", "claude-sonnet-4.6", "google/gemini-3.1-pro-preview"]);
+    expect(featured.every(m => catalog.includes(m))).toBe(true);
   });
   test("explains blocked and cancelled sign-in", () => {
     expect(errorText({ error: "popup_blocked" })).toContain("Allow popups");
@@ -94,6 +116,18 @@ describe("preview behavior", () => {
     window.localStorage.setItem("habit", "done");
     expect(window.localStorage.getItem("habit")).toBe("done");
     await window.happyDOM.close();
+  });
+  test("original studio artwork is valid local SVG without scripts or external images", async () => {
+    const svg = await Bun.file("public/orbit-art.svg").text();
+    const window = new Window();
+    try {
+      const document = new window.DOMParser().parseFromString(svg, "image/svg+xml");
+      expect(document.querySelector("parsererror")).toBeNull();
+      expect(document.documentElement.tagName).toBe("svg");
+      expect(document.querySelectorAll("script, image, foreignObject")).toHaveLength(0);
+      expect(document.querySelectorAll("radialGradient").length).toBeGreaterThan(1);
+      expect(/\p{Extended_Pictographic}/u.test(svg)).toBe(false);
+    } finally { await window.happyDOM.close(); }
   });
   test("preview artwork contains SVG, not emoji glyphs", () => {
     expect(SAMPLE_HTML).toContain("<svg");

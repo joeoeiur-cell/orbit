@@ -1,16 +1,61 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="480" height="180" viewBox="0 0 480 180" fill="none">
-<defs><radialGradient id="sphere" cx=".3" cy=".25" r=".8"><stop stop-color="#e8eddd"/><stop offset=".5" stop-color="#afbd96"/><stop offset="1" stop-color="#647b51"/></radialGradient><linearGradient id="paper" x1="230" y1="25" x2="274" y2="145" gradientUnits="userSpaceOnUse"><stop stop-color="#fffef8"/><stop offset="1" stop-color="#e0e5d7"/></linearGradient><filter id="shadow"><feGaussianBlur stdDeviation="9"/></filter></defs>
-<ellipse cx="240" cy="151" rx="64" ry="8" fill="#73845f" opacity=".12" filter="url(#shadow)"/>
-<path d="M64 90H416M240 12V168" stroke="#dfe5d5" stroke-dasharray="2 6"/>
-<ellipse cx="240" cy="90" rx="157" ry="47" transform="rotate(-14 240 90)" stroke="#d0d9c0"/>
-<ellipse cx="240" cy="90" rx="116" ry="68" transform="rotate(23 240 90)" stroke="#e0dccb"/>
-<circle cx="240" cy="90" r="53" fill="url(#sphere)"/>
-<path d="M192 88c27 15 65 23 100 12M207 46c-7 31 4 67 32 94M261 42c-13 23-14 67-1 96" stroke="#fff" opacity=".17"/>
-<rect x="210" y="53" width="61" height="76" rx="11" transform="rotate(-12 210 53)" fill="url(#paper)" stroke="#f4f5ea"/>
-<g transform="translate(222 62) rotate(-12)"><rect width="37" height="8" rx="3" fill="#bdc9aa"/><path d="M0 22h30M0 30h22" stroke="#acb99b" stroke-width="2" stroke-linecap="round"/><rect y="42" width="15" height="15" rx="4" fill="#8ca174"/><path d="m4 50 3 3 5-6" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 46h13M22 53h9" stroke="#bcc5ad" stroke-width="2" stroke-linecap="round"/></g>
-<circle cx="94" cy="123" r="8" fill="#9aac83" stroke="#f8faf2" stroke-width="4"/>
-<circle cx="380" cy="61" r="6" fill="#c7b695" stroke="#faf9f4" stroke-width="3"/>
-<rect x="134" y="31" width="29" height="29" rx="8" transform="rotate(-10 134 31)" fill="#f8f9f3" stroke="#dce3d0"/><path d="m145 40-5 5 5 4m8-10 5 4-5 5" stroke="#8a9c73" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="318" y="119" width="32" height="29" rx="8" transform="rotate(9 318 119)" fill="#f9f7f0" stroke="#e3dcca"/><path d="M325 128h15m-15 5h10m-10 5h13" stroke="#b29f7e" stroke-width="1.5" stroke-linecap="round"/>
-<circle cx="181" cy="144" r="2" fill="#bcc8a9"/><circle cx="290" cy="30" r="2" fill="#baa889"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="240" viewBox="0 0 640 240" fill="none">
+  <defs>
+    <radialGradient id="halo"><stop stop-color="#e2ebd2" stop-opacity=".85"/><stop offset="1" stop-color="#eef3e6" stop-opacity="0"/></radialGradient>
+    <radialGradient id="planet" cx=".28" cy=".2" r=".88"><stop stop-color="#e5edcf"/><stop offset=".38" stop-color="#b2c292"/><stop offset=".72" stop-color="#708b60"/><stop offset="1" stop-color="#304b3b"/></radialGradient>
+    <radialGradient id="moon" cx=".27" cy=".22" r=".84"><stop stop-color="#f5dfc3"/><stop offset=".5" stop-color="#d4a67f"/><stop offset="1" stop-color="#94664f"/></radialGradient>
+    <linearGradient id="paper" x1="258" y1="62" x2="371" y2="190" gradientUnits="userSpaceOnUse"><stop stop-color="#fffffb"/><stop offset="1" stop-color="#e2e9d7"/></linearGradient>
+    <linearGradient id="leaf" x1="149" y1="168" x2="192" y2="104" gradientUnits="userSpaceOnUse"><stop stop-color="#476747"/><stop offset="1" stop-color="#b0c196"/></linearGradient>
+    <linearGradient id="ring" x1="110" y1="174" x2="521" y2="58" gradientUnits="userSpaceOnUse"><stop stop-color="#9baF85"/><stop offset=".45" stop-color="#e4dbc6"/><stop offset="1" stop-color="#bacbae"/></linearGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="card-shadow" x="-40%" y="-30%" width="180%" height="190%"><feDropShadow dx="0" dy="7" stdDeviation="7" flood-color="#395132" flood-opacity=".14"/></filter>
+    <clipPath id="sphere-clip"><circle cx="322" cy="123" r="68"/></clipPath>
+  </defs>
+  <ellipse cx="320" cy="122" rx="252" ry="117" fill="url(#halo)"/>
+  <g stroke="#d9e2d0" opacity=".65">
+    <path d="M60 123h520M320 12v218" stroke-dasharray="1 7"/>
+    <circle cx="320" cy="123" r="101" stroke-dasharray="1 6"/>
+    <path d="M93 45v12m-6-6h12M546 171v12m-6-6h12"/>
+  </g>
+  <ellipse cx="326" cy="209" rx="103" ry="7" fill="#647d55" opacity=".13" filter="url(#blur)"/>
+  <ellipse cx="319" cy="122" rx="213" ry="60" transform="rotate(-13 319 122)" stroke="url(#ring)" stroke-width="1.5"/>
+  <ellipse cx="319" cy="122" rx="157" ry="75" transform="rotate(25 319 122)" stroke="#d6d0bb" stroke-width="1"/>
+  <circle cx="322" cy="123" r="68" fill="url(#planet)"/>
+  <g clip-path="url(#sphere-clip)" stroke="#edf3df" opacity=".2">
+    <ellipse cx="320" cy="122" rx="36" ry="72" transform="rotate(-22 320 122)"/>
+    <ellipse cx="323" cy="123" rx="15" ry="75" transform="rotate(-22 323 123)"/>
+    <ellipse cx="323" cy="112" rx="71" ry="22" transform="rotate(-22 323 112)"/>
+    <ellipse cx="327" cy="143" rx="71" ry="22" transform="rotate(-22 327 143)"/>
+  </g>
+  <path d="M125 164c63 16 150 5 236-14 79-18 130-38 156-66" stroke="url(#ring)" stroke-width="2.5" stroke-linecap="round"/>
+  <g filter="url(#card-shadow)" transform="rotate(-9 320 125)">
+    <rect x="273" y="72" width="89" height="111" rx="12" fill="url(#paper)" stroke="#fffffc"/>
+    <rect x="285" y="85" width="25" height="5" rx="2.5" fill="#9baF84"/>
+    <circle cx="348" cy="87" r="2" fill="#b4c59d"/>
+    <rect x="285" y="101" width="64" height="28" rx="5" fill="#ebf0e1" stroke="#dbe4d0"/>
+    <path d="m301 110-5 5 5 5m10-12-4 14m10-12 5 5-5 5" stroke="#6a8858" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="285" y="140" width="15" height="15" rx="4" fill="#5e7c51"/>
+    <path d="m289 147 3 3 5-6" stroke="#f9fcf2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M307 144h34m-34 7h25M285 165h54" stroke="#b2c09e" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+  <g transform="rotate(8 458 159)" filter="url(#card-shadow)">
+    <rect x="421" y="136" width="75" height="47" rx="9" fill="#fffdf7" stroke="#e0ddcd"/>
+    <circle cx="436" cy="151" r="5" fill="#d8b692"/>
+    <path d="M449 149h32m-32 7h22M432 169h44" stroke="#bcbaa4" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+  <g transform="rotate(-7 182 61)" filter="url(#card-shadow)">
+    <rect x="153" y="40" width="64" height="45" rx="9" fill="#fafcf4" stroke="#d5e0c6"/>
+    <path d="M168 69V57m8 12V52m8 17V61m8 8V48m8 21V55" stroke="#8da678" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <circle cx="475" cy="68" r="21" fill="url(#moon)"/>
+  <ellipse cx="475" cy="68" rx="30" ry="7" transform="rotate(-24 475 68)" stroke="#d0b997" stroke-width="1.5"/>
+  <circle cx="118" cy="160" r="9" fill="url(#planet)"/>
+  <g>
+    <path d="M171 190c5-24 7-48 20-68" stroke="#708867" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M180 161c-23-1-31-13-28-31 20 0 30 12 28 31Z" fill="url(#leaf)"/>
+    <path d="M178 174c15-22 30-26 43-18-8 17-26 23-43 18Z" fill="url(#leaf)"/>
+    <path d="M185 142c-10-19-7-32 7-42 11 12 11 28-7 42Z" fill="url(#leaf)"/>
+    <path d="m180 162-21-23m20 35 31-13m-25-20 6-31" stroke="#dce8cc" stroke-opacity=".3" stroke-linecap="round"/>
+  </g>
+  <g fill="#8ca278"><circle cx="227" cy="188" r="2.5"/><circle cx="416" cy="33" r="2"/><circle cx="525" cy="111" r="2.5"/><circle cx="252" cy="30" r="2"/></g>
+  <g stroke="#b1bea0" stroke-linecap="round"><path d="M390 197v10m-5-5h10M240 64v8m-4-4h8"/></g>
 </svg>
