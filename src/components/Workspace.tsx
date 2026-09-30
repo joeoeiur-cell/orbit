@@ -9,7 +9,7 @@ import { BUILD_PROMPT, errorText, extractArtifacts, loadPuter, previewDocument, 
 type Message = ChatMessage & { id: string; model?: string };
 type Checkpoint = { id: string; files: Artifact[]; tasks: Task[]; label: string };
 type Conversation = { id: string; title: string; messages: Message[]; files: Artifact[]; tasks: Task[]; checkpoints: Checkpoint[] };
-const uid = () => crypto.randomUUID();
+const uid = () => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const examples = [
   { icon: Code2, title: "Build something", subtitle: "An idea → a working app", prompt: "Build a beautiful, interactive habit tracker app with a weekly view and local storage." },
   { icon: Sparkles, title: "Explore an idea", subtitle: "Find your next lightbulb moment", prompt: "Help me brainstorm 5 creative app ideas that solve everyday problems." },
@@ -64,16 +64,19 @@ export default function Workspace() {
     try { const result = await p.ai.listModels(); setModels(Array.from(new Map(result.map(m => [m.id, m])).values())); }
     catch (e) { setModelError(errorText(e)); }
   };
-  useEffect(() => {
-    let live = true;
-    loadPuter().then(async p => {
-      if (!live) return;
+  // Do not execute third-party SDK scripts during the initial preview render.
+  // Model discovery and account connection initialize Puter on demand instead.
+  useEffect(() => () => { runId.current++; }, []);
+  const openModels = async () => {
+    setModelOpen(true);
+    if (models.length) return;
+    setModelError("");
+    try {
+      const p = sdk || await loadPuter();
       setSdk(p);
-      void refreshModels(p);
-      if (p.auth.isSignedIn()) { const user = await p.auth.getUser(); if (live) setUsername(user.username); }
-    }).catch(e => { if (live) setModelError(errorText(e)); });
-    return () => { live = false; runId.current++; };
-  }, []);
+      await refreshModels(p);
+    } catch (e) { setModelError(errorText(e)); }
+  };
   useEffect(() => {
     const key = `orbit-chats:${username || "guest"}`;
     try {
@@ -178,7 +181,7 @@ export default function Workspace() {
             {attachment && <div className="attachment-pill"><FileCode2 size={13} />{attachment.name}<button aria-label="Remove attachment" onClick={() => setAttachment(undefined)}><X size={13} /></button></div>}
             <form className="composer" onSubmit={e => { e.preventDefault(); void send(); }}>
               <textarea ref={textArea} aria-label="Message" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} placeholder="Ask anything, or build something extraordinary…" rows={2} />
-              <div className="composer-toolbar"><div><button type="button" className="icon-button" aria-label="Attach text file" onClick={() => fileInput.current?.click()}><Paperclip size={17} /></button><span className="toolbar-divider" /><button type="button" className="mode-button" onClick={() => setMode(mode === "build" ? "chat" : "build")}>{mode === "build" ? <Code2 size={14} /> : <MessageSquare size={14} />}{mode === "build" ? "Build" : "Chat"}<ChevronDown size={12} /></button></div><div><button type="button" className="model-button" onClick={() => setModelOpen(true)}><span className="model-mini">✳</span><span>{modelName}</span><ChevronDown size={12} /></button>{busy ? <button type="button" className="send-button" aria-label="Stop response" onClick={stop}><Square size={14} fill="currentColor" /></button> : <button type="submit" className="send-button" aria-label="Send message" disabled={!input.trim()}><ArrowUp size={18} /></button>}</div></div>
+              <div className="composer-toolbar"><div><button type="button" className="icon-button" aria-label="Attach text file" onClick={() => fileInput.current?.click()}><Paperclip size={17} /></button><span className="toolbar-divider" /><button type="button" className="mode-button" onClick={() => setMode(mode === "build" ? "chat" : "build")}>{mode === "build" ? <Code2 size={14} /> : <MessageSquare size={14} />}{mode === "build" ? "Build" : "Chat"}<ChevronDown size={12} /></button></div><div><button type="button" className="model-button" onClick={() => void openModels()}><span className="model-mini">✳</span><span>{modelName}</span><ChevronDown size={12} /></button>{busy ? <button type="button" className="send-button" aria-label="Stop response" onClick={stop}><Square size={14} fill="currentColor" /></button> : <button type="submit" className="send-button" aria-label="Send message" disabled={!input.trim()}><ArrowUp size={18} /></button>}</div></div>
             </form>
             <input ref={fileInput} type="file" accept=".txt,.md,.html,.css,.js,.ts,.tsx,.json,.csv,.py" hidden onChange={async e => { const f = e.target.files?.[0]; if (!f) return; if (f.size > 100000) toast.error("Please attach a text file smaller than 100 KB."); else setAttachment({ name: f.name, content: await f.text() }); e.target.value = ""; }} />
             <div className="composer-caption"><span>{username ? <><span className="status-dot connected" /> Connected to Puter</> : <><ShieldCheck size={11} /> Your models. Your Puter account.</>}</span><span>AI can make mistakes. Stay curious.</span><span className="enter-label">↵ to send</span></div>

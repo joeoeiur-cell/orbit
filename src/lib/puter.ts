@@ -7,15 +7,30 @@ export interface PuterSDK {
 declare global { interface Window { puter?: PuterSDK } }
 let loading: Promise<PuterSDK> | undefined;
 export function loadPuter(): Promise<PuterSDK> {
-  if (window.puter) return Promise.resolve(window.puter);
+  if (window.puter?.auth && typeof window.puter.ai?.chat === "function" && typeof window.puter.ai?.listModels === "function") return Promise.resolve(window.puter);
   if (loading) return loading;
   loading = new Promise((resolve, reject) => {
     const script = document.createElement("script");
+    // CORS mode exposes script errors instead of the opaque “Script error.”
+    script.crossOrigin = "anonymous";
     script.src = "https://js.puter.com/v2/";
     script.async = true;
-    const timer = window.setTimeout(() => { loading = undefined; script.remove(); reject(new Error("Puter took too long to load. Please retry.")); }, 20000);
-    script.onload = () => { clearTimeout(timer); if (window.puter) resolve(window.puter); else { loading = undefined; reject(new Error("Puter SDK unavailable.")); } };
-    script.onerror = () => { clearTimeout(timer); loading = undefined; script.remove(); reject(new Error("Could not load Puter. Check your connection and retry.")); };
+    const fail = (message: string) => {
+      clearTimeout(timer);
+      loading = undefined;
+      script.onload = null;
+      script.onerror = null;
+      script.remove();
+      reject(new Error(message));
+    };
+    const timer = window.setTimeout(() => fail("Puter took too long to load. Please retry."), 20000);
+    script.onload = () => {
+      clearTimeout(timer);
+      const sdk = window.puter;
+      if (sdk?.auth && typeof sdk.ai?.chat === "function" && typeof sdk.ai?.listModels === "function") resolve(sdk);
+      else fail("Puter did not initialize. Try opening the site outside the embedded preview and reconnecting.");
+    };
+    script.onerror = () => fail("Could not load Puter. Check your connection or content blocker, then retry.");
     document.head.appendChild(script);
   });
   return loading;
