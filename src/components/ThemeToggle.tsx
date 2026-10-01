@@ -1,4 +1,5 @@
 import { Moon, Sun } from "lucide-react";
+// Self-contained: applies the theme class directly so a click always switches visually.
 import { applyTheme, useOrbitTheme } from "@/lib/theme";
 
 export default function ThemeToggle() {
