@@ -1,5 +1,10 @@
 export const SANDBOX_LIFETIME_MS = 5 * 60 * 1000;
 export const MAX_TRANSFER_BYTES = 500000;
+export function validateDaytonaKey(value: string): string {
+  const key = value.trim();
+  if (!/^dtn_[A-Za-z0-9_-]{12,500}$/.test(key)) throw new Error("Enter a valid Daytona API key beginning with dtn_.");
+  return key;
+}
 export function sandboxPath(name: string): string {
   if (!name || name.length > 200 || name.startsWith("/") || name.includes("\\") || /[\x00-\x1f]/.test(name)) throw new Error("Use a relative project file path.");
   const parts = name.replace(/^\.\//, "").split("/");

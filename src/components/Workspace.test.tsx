@@ -29,7 +29,9 @@ let planReply = false;
 let workspaceSignedIn = false;
 let vmConfigured = true;
 let vmCalls: string[] = [];
-let vmRow: { id: string; status: string; expiresAt: number; workDir: string; expired: boolean } | null = null;
+let vmRow: { id: string; status: string; expiresAt: number; workDir: string; expired: boolean; credentialSource: "personal" | "project" } | null = null;
+const fakeSessionKey = "dtn_orbit_test_only_not_a_real_key";
+let vmRequestKey: unknown;
 const convexReact = await import("convex/react");
 mock.module("convex/react", () => ({ ...convexReact,
   useConvexAuth: () => ({ isAuthenticated: workspaceSignedIn, isLoading: false }),
@@ -37,10 +39,11 @@ mock.module("convex/react", () => ({ ...convexReact,
   useAction: (reference: FunctionReference<"action">) => async (args: Record<string, unknown>) => {
     const name = getFunctionName(reference);
     vmCalls.push(name);
+    if (name !== "daytona:configuration") vmRequestKey = args.apiKey;
     if (name === "daytona:configuration") return { configured: vmConfigured };
     if (name === "daytona:create") {
       expect(args.consent).toBe(true);
-      vmRow = { id: "mock-vm", status: "running", expiresAt: Date.now() + 300000, workDir: "/project/orbit", expired: false };
+      vmRow = { id: "mock-vm", status: "running", expiresAt: Date.now() + 300000, workDir: "/project/orbit", expired: false, credentialSource: args.apiKey ? "personal" : "project" };
     }
     if (name === "daytona:execute") return { output: "v24.0.0", exitCode: 0 };
     if (name === "daytona:syncFiles") return { count: (args.files as unknown[]).length };
@@ -327,12 +330,54 @@ test("missing Daytona credentials prevent paid calls and show setup guidance", a
   try {
     await act(async () => { root.render(<BrowserRouter><Workspace /></BrowserRouter>); });
     await click("Cloud sandbox");
-    expect(browser.document.querySelector(".vm-setup")?.textContent).toContain("DAYTONA_API_KEY");
+    expect(browser.document.querySelector(".vm-setup")?.textContent).toContain("Daytona API key");
+    expect(browser.document.querySelector('[aria-label="Daytona API key"]')?.getAttribute("type")).toBe("password");
     await act(async () => { (browser.document.querySelector('[aria-label="Confirm Daytona compute usage"]') as unknown as HTMLInputElement).click(); });
     expect((button("Start cloud sandbox") as unknown as HTMLButtonElement).disabled).toBe(true);
     expect(vmCalls).not.toContain("daytona:create");
   } finally {
     workspaceSignedIn = false; vmConfigured = true;
+    await act(async () => { root.unmount(); }); container.remove();
+  }
+});
+
+test("personal Daytona keys stay session-only, require separate compute consent, and are used on every sandbox request", async () => {
+  const container = browser.document.createElement("div"); browser.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  workspaceSignedIn = true; vmConfigured = false; vmCalls = []; vmRow = null; vmRequestKey = undefined;
+  try {
+    await act(async () => { root.render(<BrowserRouter><Workspace /></BrowserRouter>); });
+    await click("New conversation"); await click("Cloud sandbox");
+    await type('[aria-label="Daytona API key"]', "not-a-key");
+    await click("Use key for this session");
+    expect(browser.document.querySelector('[role="alert"]')?.textContent).toContain("valid Daytona API key");
+    expect(vmCalls).not.toContain("daytona:create");
+    await type('[aria-label="Daytona API key"]', fakeSessionKey);
+    await click("Use key for this session");
+    expect(browser.document.querySelector('[aria-label="Daytona API key"]')).toBeNull();
+    expect(browser.document.querySelector(".vm-key-setup")?.textContent).toContain("Key ready");
+    expect(browser.document.body.textContent).not.toContain(fakeSessionKey);
+    expect((button("Start cloud sandbox") as unknown as HTMLButtonElement).disabled).toBe(true);
+    expect(vmCalls).toEqual(["daytona:configuration"]);
+    await act(async () => { (browser.document.querySelector('[aria-label="Confirm Daytona compute usage"]') as unknown as HTMLInputElement).click(); });
+    await click("Start cloud sandbox");
+    expect(vmRequestKey).toBe(fakeSessionKey);
+    await type('[aria-label="Sandbox command"]', "node --version"); await click("Run sandbox command");
+    expect(vmRequestKey).toBe(fakeSessionKey);
+    await click("Forget session key");
+    expect((button("Run sandbox command") as unknown as HTMLButtonElement).disabled).toBe(true);
+    expect((button("Delete cloud sandbox") as unknown as HTMLButtonElement).disabled).toBe(true);
+    expect(browser.document.querySelector(".vm-key-warning")?.textContent).toContain("same key");
+    await type('[aria-label="Daytona API key"]', fakeSessionKey); await click("Use key for this session");
+    await click("Close workspace"); await click("Cloud sandbox");
+    expect((browser.document.querySelector('[aria-label="Daytona API key"]') as unknown as HTMLInputElement).value).toBe("");
+    expect((button("Delete cloud sandbox") as unknown as HTMLButtonElement).disabled).toBe(true);
+    await type('[aria-label="Daytona API key"]', fakeSessionKey); await click("Use key for this session");
+    await click("Delete cloud sandbox"); expect(vmRequestKey).toBe(fakeSessionKey);
+    for (let i = 0; i < browser.localStorage.length; i++) expect(browser.localStorage.getItem(browser.localStorage.key(i)!)).not.toContain(fakeSessionKey);
+    expect(browser.sessionStorage.length).toBe(0);
+  } finally {
+    workspaceSignedIn = false; vmConfigured = true; vmRow = null; vmRequestKey = undefined;
     await act(async () => { root.unmount(); }); container.remove();
   }
 });

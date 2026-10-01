@@ -48,6 +48,7 @@ const schema = defineSchema(
       expiresAt: v.number(),
       createdAt: v.number(),
       operationUntil: v.optional(v.number()),
+      credentialFingerprint: v.optional(v.string()),
     }).index("by_user", ["userId"]),
 
     // add other tables here

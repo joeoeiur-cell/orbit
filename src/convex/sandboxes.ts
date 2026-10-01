@@ -11,19 +11,19 @@ export const current = query({
     const rows = await ctx.db.query("cloudSandboxes").withIndex("by_user", q => q.eq("userId", userId)).order("desc").collect();
     const row = rows.find(r => r.projectId === projectId);
     if (!row) return null;
-    return { id: row._id, status: row.status, expiresAt: row.expiresAt, workDir: row.workDir || "", expired: row.expiresAt <= Date.now() };
+    return { id: row._id, status: row.status, expiresAt: row.expiresAt, workDir: row.workDir || "", expired: row.expiresAt <= Date.now(), credentialSource: row.credentialFingerprint?.startsWith("personal:") ? "personal" as const : "project" as const };
   },
 });
 export const reserve = internalMutation({
-  args: { projectId: v.string() },
-  handler: async (ctx, { projectId }) => {
+  args: { projectId: v.string(), credentialFingerprint: v.string() },
+  handler: async (ctx, { projectId, credentialFingerprint }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Sign in to Orbit to use the cloud sandbox.");
     if (!projectId || projectId.length > 150) throw new Error("Invalid project.");
     const rows = await ctx.db.query("cloudSandboxes").withIndex("by_user", q => q.eq("userId", userId)).collect();
     if (rows.some(r => ["creating", "running", "deleting"].includes(r.status) && r.expiresAt > Date.now())) throw new Error("You already have an active sandbox. Delete it or wait for its five-minute expiry.");
     const now = Date.now();
-    return ctx.db.insert("cloudSandboxes", { userId, projectId, status: "creating", createdAt: now, expiresAt: now + SANDBOX_LIFETIME_MS });
+    return ctx.db.insert("cloudSandboxes", { userId, projectId, status: "creating", createdAt: now, expiresAt: now + SANDBOX_LIFETIME_MS, credentialFingerprint });
   },
 });
 export const owned = internalQuery({

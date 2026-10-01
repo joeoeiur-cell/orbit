@@ -1,15 +1,22 @@
 "use node";
 import { Daytona } from "@daytonaio/sdk";
+import { createHash } from "node:crypto";
 import { v } from "convex/values";
 import { action, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { MAX_TRANSFER_BYTES, sandboxPath, validateTransfers } from "../lib/sandbox";
+import { MAX_TRANSFER_BYTES, sandboxPath, validateDaytonaKey, validateTransfers } from "../lib/sandbox";
 
-function client() {
-  const apiKey = process.env.DAYTONA_API_KEY;
-  if (!apiKey) throw new Error("Add DAYTONA_API_KEY in the project’s Keys tab to enable cloud sandboxes.");
-  return new Daytona({ apiKey, apiUrl: process.env.DAYTONA_SERVER_URL || undefined, requestTimeoutMs: 20000, useDeprecatedPolling: true });
+// Personal keys are supplied for each request, never written to the database or sandbox.
+// Persist only a one-way fingerprint to prevent switching credentials on an active sandbox.
+async function client(ctx: ActionCtx, personalKey?: string, expectedFingerprint?: string | null) {
+  if (!await ctx.auth.getUserIdentity()) throw new Error("Sign in to Orbit first.");
+  const personal = personalKey !== undefined;
+  const apiKey = personal ? validateDaytonaKey(personalKey) : process.env.DAYTONA_API_KEY;
+  if (!apiKey) throw new Error("Enter your Daytona API key in the cloud sandbox panel first.");
+  const fingerprint = `${personal ? "personal" : "project"}:${createHash("sha256").update(apiKey).digest("hex")}`;
+  if ((expectedFingerprint && expectedFingerprint !== fingerprint) || (expectedFingerprint === null && personal)) throw new Error("Re-enter the same Daytona key that started this sandbox. Delete it or wait for expiry before using a different key.");
+  return { daytona: new Daytona({ apiKey, apiUrl: personal ? undefined : process.env.DAYTONA_SERVER_URL || undefined, requestTimeoutMs: 20000, useDeprecatedPolling: true }), fingerprint };
 }
 export const configuration = action({
   args: {},
@@ -19,11 +26,11 @@ export const configuration = action({
   },
 });
 export const create = action({
-  args: { projectId: v.string(), consent: v.boolean() },
-  handler: async (ctx, { projectId, consent }): Promise<void> => {
+  args: { projectId: v.string(), consent: v.boolean(), apiKey: v.optional(v.string()) },
+  handler: async (ctx, { projectId, consent, apiKey }): Promise<void> => {
     if (!consent) throw new Error("Confirm sandbox usage before starting.");
-    const daytona = client();
-    const id = await ctx.runMutation(internal.sandboxes.reserve, { projectId });
+    const { daytona, fingerprint } = await client(ctx, apiKey);
+    const id = await ctx.runMutation(internal.sandboxes.reserve, { projectId, credentialFingerprint: fingerprint });
     let sandbox: Awaited<ReturnType<Daytona["create"]>> | undefined;
     try {
       sandbox = await daytona.create({ language: "typescript", ephemeral: true, autoStopInterval: 5, autoDeleteInterval: 0, ttlMinutes: 5, public: false, networkBlockAll: true, labels: { app: "orbit" } }, { timeout: 45 });
@@ -39,29 +46,30 @@ export const create = action({
     }
   },
 });
-async function withSandbox<T>(ctx: ActionCtx, id: Id<"cloudSandboxes">, fn: (sandbox: Awaited<ReturnType<Daytona["get"]>>, workDir: string) => Promise<T>): Promise<T> {
+async function withSandbox<T>(ctx: ActionCtx, id: Id<"cloudSandboxes">, apiKey: string | undefined, fn: (sandbox: Awaited<ReturnType<Daytona["get"]>>, workDir: string) => Promise<T>): Promise<T> {
   const row = await ctx.runQuery(internal.sandboxes.owned, { id });
   if (!row.sandboxId || !row.workDir) throw new Error("Sandbox is not ready.");
+  const { daytona } = await client(ctx, apiKey, row.credentialFingerprint ?? null);
   await ctx.runMutation(internal.sandboxes.lock, { id });
-  try { return await fn(await client().get(row.sandboxId), row.workDir); }
+  try { return await fn(await daytona.get(row.sandboxId), row.workDir); }
   catch { throw new Error("Sandbox operation failed. It may have expired or Daytona may be unavailable. Check your command and refresh the status."); }
   finally { await ctx.runMutation(internal.sandboxes.unlock, { id }); }
 }
 export const execute = action({
-  args: { id: v.id("cloudSandboxes"), command: v.string() },
-  handler: async (ctx, { id, command }): Promise<{ output: string; exitCode: number }> => {
+  args: { id: v.id("cloudSandboxes"), command: v.string(), apiKey: v.optional(v.string()) },
+  handler: async (ctx, { id, command, apiKey }): Promise<{ output: string; exitCode: number }> => {
     if (!command.trim() || command.length > 4000) throw new Error("Enter a command under 4,000 characters.");
-    return withSandbox(ctx, id, async (sandbox, workDir) => {
+    return withSandbox(ctx, id, apiKey, async (sandbox, workDir) => {
       const result = await sandbox.process.executeCommand(command, workDir, undefined, 25);
       return { output: (result.result || result.artifacts?.stdout || "").slice(0, 60000), exitCode: result.exitCode ?? -1 };
     });
   },
 });
 export const syncFiles = action({
-  args: { id: v.id("cloudSandboxes"), files: v.array(v.object({ name: v.string(), content: v.string() })) },
-  handler: async (ctx, { id, files }): Promise<{ count: number }> => {
+  args: { id: v.id("cloudSandboxes"), files: v.array(v.object({ name: v.string(), content: v.string() })), apiKey: v.optional(v.string()) },
+  handler: async (ctx, { id, files, apiKey }): Promise<{ count: number }> => {
     const valid = validateTransfers(files);
-    return withSandbox(ctx, id, async (sandbox, workDir) => {
+    return withSandbox(ctx, id, apiKey, async (sandbox, workDir) => {
       const folders = [...new Set(valid.filter(f => f.name.includes("/")).map(f => `${workDir}/${f.name.slice(0, f.name.lastIndexOf("/"))}`))];
       for (const folder of folders) await sandbox.fs.createFolder(folder, "755");
       await sandbox.fs.uploadFiles(valid.map(f => ({ source: Buffer.from(f.content), destination: `${workDir}/${f.name}` })), 25);
@@ -70,10 +78,10 @@ export const syncFiles = action({
   },
 });
 export const readFile = action({
-  args: { id: v.id("cloudSandboxes"), name: v.string() },
-  handler: async (ctx, { id, name }): Promise<{ name: string; content: string }> => {
+  args: { id: v.id("cloudSandboxes"), name: v.string(), apiKey: v.optional(v.string()) },
+  handler: async (ctx, { id, name, apiKey }): Promise<{ name: string; content: string }> => {
     const path = sandboxPath(name);
-    return withSandbox(ctx, id, async (sandbox, workDir) => {
+    return withSandbox(ctx, id, apiKey, async (sandbox, workDir) => {
       const remote = `${workDir}/${path}`;
       const details = await sandbox.fs.getFileDetails(remote);
       if (details.size > MAX_TRANSFER_BYTES) throw new Error("File is larger than 500 KB.");
@@ -84,19 +92,20 @@ export const readFile = action({
   },
 });
 export const preview = action({
-  args: { id: v.id("cloudSandboxes"), port: v.number() },
-  handler: async (ctx, { id, port }): Promise<{ url: string }> => {
+  args: { id: v.id("cloudSandboxes"), port: v.number(), apiKey: v.optional(v.string()) },
+  handler: async (ctx, { id, port, apiKey }): Promise<{ url: string }> => {
     if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Use a port between 1024 and 65535.");
-    return withSandbox(ctx, id, async (sandbox) => {
+    return withSandbox(ctx, id, apiKey, async (sandbox) => {
       const result = await sandbox.getSignedPreviewUrl(port, 60);
       return { url: result.url };
     });
   },
 });
 export const remove = action({
-  args: { id: v.id("cloudSandboxes") },
-  handler: async (ctx, { id }): Promise<void> => {
-    const daytona = client();
+  args: { id: v.id("cloudSandboxes"), apiKey: v.optional(v.string()) },
+  handler: async (ctx, { id, apiKey }): Promise<void> => {
+    const row = await ctx.runQuery(internal.sandboxes.owned, { id });
+    const { daytona } = await client(ctx, apiKey, row.credentialFingerprint ?? null);
     const sandboxId = await ctx.runMutation(internal.sandboxes.beginDelete, { id });
     try { await daytona.delete(await daytona.get(sandboxId), 25, true); }
     catch {
