@@ -1,3 +1,45 @@
+# Orbit
+
+A multi-model chat and build workspace running on Puter. Chat with different AI models in one place, generate artifacts with safe sandboxed previews, switch between chat and Plan mode, search the web, and run generated code in Daytona cloud sandboxes.
+
+## Features
+
+- **Multi-model chat** — pick models from the model library and stream responses.
+- **Artifacts** — generated app previews render in isolated, safe iframes with their own theme.
+- **Plan mode** — plan before building; switch modes in the workspace.
+- **Web search** — ground conversations with live search results.
+- **Cloud sandboxes** — bring your own Daytona API key to create and execute code in cloud VMs. Keys stay in your browser (session-only by default, or remembered for 7 days in a cookie after you accept cookies). Plaintext keys are never sent to or stored on the server — only a SHA-256 fingerprint is kept to bind each sandbox to the key that created it.
+- **Cookie consent** — explicit accept/decline banner; declining wipes stored keys. If cookies are blocked, choices fall back to localStorage so the banner does not nag.
+- **Light/dark theme** — self-managed theme store with persistence, no extra provider.
+
+## Stack
+
+- React 19 + TypeScript + Vite
+- Tailwind CSS 4 + shadcn/ui + lucide-react
+- React Router 7
+- Convex backend + Convex Auth (email OTP and anonymous)
+- Bun for packages and tests
+
+## Development
+
+```bash
+bun install
+bun run dev        # start Vite dev server
+bun test           # run unit tests (bun test runner)
+bun tsc -b --noEmit  # typecheck
+bun convex dev --once  # push Convex functions once
+```
+
+Environment variables (`CONVEX_DEPLOYMENT`, `VITE_CONVEX_URL`, auth keys) are provisioned by the hosting platform; see `.env.example` for the shape. Copy it to `.env.local` and fill values in — `.env.local` is git-ignored and never committed.
+
+## Security notes
+
+- Never commit `.env*` files; only `.env.example` is tracked.
+- Daytona keys entered in the UI are validated, stored only in browser cookies/localStorage with your consent, and hashed server-side for credential binding.
+- Rotate any API key that has ever been pasted into a chat or screenshot.
+
+---
+
 ## Overview
 
 This project uses the following tech stack:
