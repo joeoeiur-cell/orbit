@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",
+    "@daytonaio/sdk": "^0.220.0",
     "@heyputer/puter.js": "^2.6.3",
     "@hookform/resolvers": "^5.2.2",
     "@jridgewell/trace-mapping": "^0.3.31",

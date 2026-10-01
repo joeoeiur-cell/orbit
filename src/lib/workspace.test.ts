@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Window, type HTMLButtonElement, type HTMLElement } from "happy-dom";
-import { discoverModels, errorText, extractArtifacts, featuredModels, modelPick, previewDocument, sortModels, type Model, type PuterSDK } from "./puter";
-import { applyArtifacts, parseConversations, restoreCheckpoint, SAMPLE_HTML, toggleTask, type Conversation } from "./workspace";
+import { discoverModels, errorText, extractArtifacts, featuredModels, modelPick, previewDocument, responseLinks, sortModels, supportsWebSearch, type Model, type PuterSDK } from "./puter";
+import { applyArtifacts, applyPlan, parseConversations, restoreCheckpoint, SAMPLE_HTML, toggleTask, type Conversation } from "./workspace";
+
+import { sandboxPath, validateTransfers } from "./sandbox";
 
 const empty: Conversation = { id: "one", title: "Project", messages: [], files: [], tasks: [], checkpoints: [] };
 
@@ -81,6 +83,31 @@ describe("artifact and conversation state", () => {
     expect(restored.files).toEqual([{ name: "index.html", content: "first" }]);
     expect(restored.tasks[0].done).toBe(false);
     expect(restored.messages).toBe(second.messages);
+  });
+});
+
+describe("planning, search, and cloud file safety", () => {
+  test("planning never changes files or checkpoints and clears claimed completion", () => {
+    const built = applyArtifacts(empty, [{ name: "index.html", content: "original" }], [{ text: "Old task", done: true }]);
+    const planned = applyPlan(built, [{ text: "Implement feature", done: true }]);
+    expect(planned.files).toBe(built.files);
+    expect(planned.checkpoints).toBe(built.checkpoints);
+    expect(planned.tasks).toEqual([{ text: "Implement feature", done: false }]);
+  });
+  test("search only enables on supported OpenAI model routes", () => {
+    for (const id of ["gpt-5.5", "openai/gpt-6.1-sol", "gpt-5.6-luna", "gpt-6-astra"]) expect(supportsWebSearch(id)).toBe(true);
+    for (const id of ["gpt-5-nano", "claude-opus-5-5", "gpt-6-sol:free", "evil/gpt-5.5", "gpt-6.1-sol-image"]) expect(supportsWebSearch(id)).toBe(false);
+  });
+  test("model-provided response links reject unsafe protocols and credentials", () => {
+    expect(responseLinks("[Docs](https://example.com/docs) [Duplicate](https://example.com/docs) [Bad](javascript:alert) [Credentials](https://user:password@example.com)")).toEqual([{ url: "https://example.com/docs", title: "Duplicate" }]);
+  });
+  test("sandbox transfers reject traversal, absolute paths, duplicates and oversized payloads", () => {
+    expect(sandboxPath("./src/main.ts")).toBe("src/main.ts");
+    for (const path of ["../secret", "/etc/passwd", "src/../../secret", "a\\\\b", "a//b", "a/./b", "a\u0000b", ""]) expect(() => sandboxPath(path)).toThrow();
+    expect(validateTransfers([{ name: "app.js", content: "hello" }])).toEqual([{ name: "app.js", content: "hello" }]);
+    expect(() => validateTransfers([])).toThrow();
+    expect(() => validateTransfers([{ name: "app.js", content: "a" }, { name: "./app.js", content: "b" }])).toThrow();
+    expect(() => validateTransfers([{ name: "app.js", content: "x".repeat(500001) }])).toThrow();
   });
 });
 

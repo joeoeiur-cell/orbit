@@ -1,5 +1,7 @@
 import { afterAll, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
+import { getFunctionName } from "convex/server";
+import type { FunctionReference } from "convex/server";
 import type { ChatMessage, Model, PuterSDK } from "../lib/puter";
 
 const browser = new Window({ url: "https://orbit.test/", width: 1280, height: 900 });
@@ -22,6 +24,30 @@ let releaseStream: (() => void) | undefined;
 let signInCalls = 0;
 let sent: ChatMessage[] = [];
 let sentModel = "";
+let searchTools: { type: "web_search" }[] | undefined;
+let planReply = false;
+let workspaceSignedIn = false;
+let vmConfigured = true;
+let vmCalls: string[] = [];
+let vmRow: { id: string; status: string; expiresAt: number; workDir: string; expired: boolean } | null = null;
+const convexReact = await import("convex/react");
+mock.module("convex/react", () => ({ ...convexReact,
+  useConvexAuth: () => ({ isAuthenticated: workspaceSignedIn, isLoading: false }),
+  useQuery: () => vmRow,
+  useAction: (reference: FunctionReference<"action">) => async (args: Record<string, unknown>) => {
+    const name = getFunctionName(reference);
+    vmCalls.push(name);
+    if (name === "daytona:configuration") return { configured: vmConfigured };
+    if (name === "daytona:create") {
+      expect(args.consent).toBe(true);
+      vmRow = { id: "mock-vm", status: "running", expiresAt: Date.now() + 300000, workDir: "/project/orbit", expired: false };
+    }
+    if (name === "daytona:execute") return { output: "v24.0.0", exitCode: 0 };
+    if (name === "daytona:syncFiles") return { count: (args.files as unknown[]).length };
+    if (name === "daytona:readFile") return { name: "result.txt", content: "Imported from the sandbox" };
+    if (name === "daytona:remove") vmRow = { ...vmRow!, status: "deleted" };
+  },
+}));
 const defaultCatalog: Model[] = [{ id: "gpt-5-nano", name: "GPT Nano", provider: "OpenAI" }, { id: "test-claude", name: "Claude Test", provider: "Anthropic" }];
 let modelCatalog = defaultCatalog;
 const sdk: PuterSDK = {
@@ -35,8 +61,12 @@ const sdk: PuterSDK = {
   ai: {
     listModels: async () => modelCatalog,
     chat: async (messages, options) => {
-      sent = messages; sentModel = options.model;
+      sent = messages; sentModel = options.model; searchTools = options.tools;
       return (async function* () {
+        if (planReply) {
+          yield { type: "text", text: 'Plan first. [Provider docs](https://example.com/docs)\n```json\n{"tasks":[{"text":"Design the interface","done":true}],"files":[{"name":"must-not-write.txt","content":"Forbidden"}]}\n```' };
+          return;
+        }
         if (streamHold) {
           yield { type: "text", text: "Partial response" };
           await new Promise<void>(resolve => { releaseStream = resolve; });
@@ -213,6 +243,96 @@ test("model library features current models first, filters both sections, and se
     expect(browser.document.querySelector('[aria-label="Select GPT-6.1 Sol"]')?.getAttribute("aria-pressed")).toBe("true");
   } finally {
     modelCatalog = defaultCatalog;
+    await act(async () => { root.unmount(); }); container.remove();
+  }
+});
+
+test("Plan mode preserves files, disables completion claims, and search passes the tool only when enabled", async () => {
+  const container = browser.document.createElement("div"); browser.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  signedIn = true; planReply = true;
+  modelCatalog = [...defaultCatalog, { id: "gpt-5.5", name: "GPT-5.5", provider: "OpenAI" }];
+  try {
+    await act(async () => { root.render(<BrowserRouter><Workspace /></BrowserRouter>); });
+    await click("New conversation");
+    await click("Plan mode");
+    expect(browser.document.querySelector(".mode-notice")?.textContent).toContain("No files written");
+    expect((button("Enable web search") as unknown as HTMLButtonElement).disabled).toBe(true);
+    await click("GPT Nano"); await click("Select GPT-5.5");
+    await click("Enable web search");
+    await type('textarea[aria-label="Message"]', "Plan a project using current documentation");
+    await click("Send message");
+    expect(sent[0].content).toContain("PLAN mode");
+    expect(searchTools).toEqual([{ type: "web_search" }]);
+    expect(browser.document.querySelectorAll(".task-row.done")).toHaveLength(0);
+    expect(browser.document.querySelectorAll(".task-row")).toHaveLength(1);
+    expect(browser.document.querySelector(".response-sources a")?.getAttribute("href")).toBe("https://example.com/docs");
+    const saved = JSON.parse(browser.localStorage.getItem("orbit-chats:tester") || "[]");
+    expect(saved[0].files).toEqual([]);
+    expect(saved[0].checkpoints).toEqual([]);
+    const before = sent;
+    await click("Review & build this plan");
+    expect(sent).toBe(before);
+    expect(button("Build mode").getAttribute("aria-pressed")).toBe("true");
+    expect((browser.document.querySelector("textarea") as unknown as HTMLTextAreaElement).value).toContain("Design the interface");
+    await click("Enable web search");
+    planReply = false;
+    await click("Send message");
+    expect(searchTools).toBeUndefined();
+  } finally {
+    planReply = false; modelCatalog = defaultCatalog;
+    await act(async () => { root.unmount(); }); container.remove();
+  }
+});
+
+test("cloud sandbox requires workspace auth and confirmation, then runs commands and explicitly syncs/imports", async () => {
+  const container = browser.document.createElement("div"); browser.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  vmCalls = []; vmRow = null; workspaceSignedIn = false;
+  try {
+    await act(async () => { root.render(<BrowserRouter><Workspace /></BrowserRouter>); });
+    await click("New conversation");
+    await click("Cloud sandbox");
+    expect(browser.document.querySelector(".vm-auth-link")?.getAttribute("href")).toContain("returnTo=");
+    expect(vmCalls).toEqual([]);
+    workspaceSignedIn = true;
+    await click("Close workspace"); await click("Cloud sandbox");
+    expect((button("Start cloud sandbox") as unknown as HTMLButtonElement).disabled).toBe(true);
+    expect(vmCalls).not.toContain("daytona:create");
+    await act(async () => { (browser.document.querySelector('[aria-label="Confirm Daytona compute usage"]') as unknown as HTMLInputElement).click(); });
+    await click("Start cloud sandbox");
+    expect(vmCalls.filter(name => name === "daytona:create")).toHaveLength(1);
+    expect(vmCalls).not.toContain("daytona:execute");
+    await type('[aria-label="Sandbox command"]', "node --version");
+    await click("Run sandbox command");
+    expect(browser.document.querySelector('[aria-label="Sandbox command output"]')?.textContent).toContain("v24.0.0");
+    await click("Import sandbox file");
+    expect(browser.localStorage.getItem("orbit-chats:tester")).toContain("Imported from the sandbox");
+    await click("Sync 1 project files");
+    expect(vmCalls).toContain("daytona:syncFiles");
+    await click("Delete cloud sandbox");
+    expect((vmRow as { status: string } | null)?.status).toBe("deleted");
+    expect((browser.document.querySelector('[aria-label="Confirm Daytona compute usage"]') as unknown as HTMLInputElement).checked).toBe(false);
+    expect((button("Start cloud sandbox") as unknown as HTMLButtonElement).disabled).toBe(true);
+  } finally {
+    workspaceSignedIn = false; vmRow = null;
+    await act(async () => { root.unmount(); }); container.remove();
+  }
+});
+
+test("missing Daytona credentials prevent paid calls and show setup guidance", async () => {
+  const container = browser.document.createElement("div"); browser.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  workspaceSignedIn = true; vmConfigured = false; vmCalls = []; vmRow = null;
+  try {
+    await act(async () => { root.render(<BrowserRouter><Workspace /></BrowserRouter>); });
+    await click("Cloud sandbox");
+    expect(browser.document.querySelector(".vm-setup")?.textContent).toContain("DAYTONA_API_KEY");
+    await act(async () => { (browser.document.querySelector('[aria-label="Confirm Daytona compute usage"]') as unknown as HTMLInputElement).click(); });
+    expect((button("Start cloud sandbox") as unknown as HTMLButtonElement).disabled).toBe(true);
+    expect(vmCalls).not.toContain("daytona:create");
+  } finally {
+    workspaceSignedIn = false; vmConfigured = true;
     await act(async () => { root.unmount(); }); container.remove();
   }
 });

@@ -39,6 +39,17 @@ const schema = defineSchema(
       theme: v.union(v.literal("sunshine"), v.literal("coral"), v.literal("mint")),
     }).index("by_user", ["userId"]),
 
+    cloudSandboxes: defineTable({
+      userId: v.id("users"),
+      projectId: v.string(),
+      status: v.union(v.literal("creating"), v.literal("running"), v.literal("deleting"), v.literal("deleted"), v.literal("error")),
+      sandboxId: v.optional(v.string()),
+      workDir: v.optional(v.string()),
+      expiresAt: v.number(),
+      createdAt: v.number(),
+      operationUntil: v.optional(v.number()),
+    }).index("by_user", ["userId"]),
+
     // add other tables here
 
     // tableName: defineTable({

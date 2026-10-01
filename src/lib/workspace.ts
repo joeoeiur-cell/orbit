@@ -1,5 +1,5 @@
 import type { Artifact, ChatMessage, Task } from "./puter";
-export type Message = ChatMessage & { id: string; model?: string; status?: "complete" | "stopped" | "error" };
+export type Message = ChatMessage & { id: string; model?: string; mode?: "build" | "chat" | "plan"; webSearch?: boolean; status?: "complete" | "stopped" | "error" };
 export type Checkpoint = { id: string; files: Artifact[]; tasks: Task[]; label: string };
 export type Conversation = { id: string; title: string; messages: Message[]; files: Artifact[]; tasks: Task[]; checkpoints: Checkpoint[] };
 export const uid = () => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -24,6 +24,10 @@ export function applyArtifacts(c: Conversation, files: Artifact[], tasks: Task[]
   const nextFiles = Array.from(new Map([...c.files, ...files].map(f => [f.name, f])).values());
   const nextTasks = tasks.length ? tasks : c.tasks;
   return { ...c, files: nextFiles, tasks: nextTasks, checkpoints: [...c.checkpoints, { id: uid(), files: nextFiles.map(f => ({ ...f })), tasks: nextTasks.map(t => ({ ...t })), label: `Checkpoint ${c.checkpoints.length + 1}` }] };
+}
+export function applyPlan(c: Conversation, tasks: Task[]): Conversation {
+  // Plan mode never writes files, creates artifact checkpoints, or claims steps are done.
+  return tasks.length ? { ...c, tasks: tasks.map(t => ({ text: t.text, done: false })) } : c;
 }
 export function toggleTask(c: Conversation, index: number): Conversation {
   return { ...c, tasks: c.tasks.map((t, i) => i === index ? { ...t, done: !t.done } : t) };
