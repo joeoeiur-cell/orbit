@@ -90,8 +90,7 @@ const { createRoot } = await import("react-dom/client");
 const { BrowserRouter } = await import("react-router");
 const { default: Workspace } = await import("./Workspace");
 const { default: CookiePreferences } = await import("./CookiePreferences");
-const { ThemeProvider } = await import("next-themes");
-const { cookieChoice, setCookieChoice, rememberedDaytonaKey, rememberDaytonaKey, forgetDaytonaKey } = await import("../lib/browserCookies");
+const { cookieChoice, setCookieChoice, rememberedDaytonaKey, rememberDaytonaKey, forgetDaytonaKey, resetCookieChoice } = await import("../lib/browserCookies");
 
 const button = (name: string) => {
   const result = Array.from(browser.document.querySelectorAll("button")).find(b => b.getAttribute("aria-label") === name || b.textContent?.trim() === name);
@@ -393,7 +392,10 @@ test("first-visit cookie banner offers Accept and Decline without pre-saving a k
   try {
     await act(async () => { root.render(<CookiePreferences />); });
     expect(browser.document.querySelector(".cookie-banner")?.textContent).toContain("not HttpOnly");
-    expect(browser.document.cookie).toBe("");
+    resetCookieChoice();
+    expect(browser.document.cookie).not.toContain("__Host-orbit-cookie-choice=accepted");
+    expect(browser.document.cookie).not.toContain("__Host-orbit-cookie-choice=declined");
+    expect(cookieChoice()).toBe("unset");
     expect(cookieChoice()).toBe("unset");
     await click("Decline cookies");
     expect(cookieChoice()).toBe("declined");
@@ -504,10 +506,10 @@ test("top-right theme toggle applies dark mode to the whole site and restores th
   const stylesheet = browser.document.createElement("style");
   stylesheet.textContent = await Bun.file(new URL("../index.css", import.meta.url).pathname).text();
   browser.document.head.appendChild(stylesheet);
-  const renderWorkspace = () => <ThemeProvider attribute="class" storageKey="orbit-theme" defaultTheme="light" enableSystem={false}><BrowserRouter><Workspace /><CookiePreferences /></BrowserRouter></ThemeProvider>;
+  const renderWorkspace = () => <BrowserRouter><Workspace /><CookiePreferences /></BrowserRouter>;
   try {
     await act(async () => { root.render(renderWorkspace()); });
-    expect(browser.document.documentElement.classList.contains("light")).toBe(true);
+    expect(browser.document.documentElement.classList.contains("dark")).toBe(false);
     expect(button("Switch to dark mode").closest(".header-actions")).not.toBeNull();
     expect(button("Switch to dark mode").getAttribute("aria-pressed")).toBe("false");
     await click("Switch to dark mode");
@@ -544,7 +546,7 @@ test("theme toggle remains usable when browser preference storage is blocked", a
   const storage = Object.getOwnPropertyDescriptor(globalThis, "localStorage")!;
   Object.defineProperty(globalThis, "localStorage", { configurable: true, get: () => { throw new Error("Storage blocked"); } });
   try {
-    await act(async () => { root.render(<ThemeProvider attribute="class" storageKey="orbit-theme" defaultTheme="light" enableSystem={false}><BrowserRouter><Workspace /></BrowserRouter></ThemeProvider>); });
+    await act(async () => { root.render(<BrowserRouter><Workspace /></BrowserRouter>); });
     await click("Switch to dark mode");
     expect(browser.document.documentElement.classList.contains("dark")).toBe(true);
     await click("Switch to light mode");

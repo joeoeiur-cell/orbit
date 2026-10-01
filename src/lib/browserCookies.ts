@@ -3,6 +3,7 @@ import { validateDaytonaKey } from "./sandbox";
 
 export type CookieChoice = "accepted" | "declined" | "unset";
 const CONSENT_COOKIE = "__Host-orbit-cookie-choice";
+const FALLBACK_KEY = "orbit-cookie-choice";
 const KEY_PREFIX = "__Host-orbit-daytona-";
 const CHANGE_EVENT = "orbit-cookie-change";
 const WEEK_SECONDS = 7 * 24 * 60 * 60;
@@ -34,7 +35,12 @@ function subscribe(listener: () => void) {
 }
 export function cookieChoice(): CookieChoice {
   const saved = readCookie(CONSENT_COOKIE);
-  return saved === "accepted" || saved === "declined" ? saved : sessionChoice;
+  if (saved === "accepted" || saved === "declined") return saved;
+  try {
+    const fallback = window.localStorage.getItem(FALLBACK_KEY);
+    if (fallback === "accepted" || fallback === "declined") return fallback;
+  } catch { /* Blocked storage is not a missed answer. */ }
+  return sessionChoice;
 }
 export function setCookieChoice(choice: "accepted" | "declined"): boolean {
   sessionChoice = choice;
@@ -49,6 +55,11 @@ export function setCookieChoice(choice: "accepted" | "declined"): boolean {
     writeCookie(CONSENT_COOKIE, choice, 365 * 24 * 60 * 60);
   } catch { /* The choice still applies for this page if the browser blocks cookies. */ }
   const stored = readCookie(CONSENT_COOKIE) === choice;
+  try {
+    if (stored) window.localStorage.removeItem(FALLBACK_KEY);
+    // A blocked cookie must not bring the banner back on every visit.
+    else window.localStorage.setItem(FALLBACK_KEY, choice);
+  } catch { /* Nothing more can be persisted; the choice applies for this visit. */ }
   if (stored) sessionChoice = "unset";
   notify();
   return stored;
@@ -58,6 +69,14 @@ export function rememberedDaytonaKey(userId: string): string {
   const saved = readCookie(keyCookie(userId));
   if (!saved) return "";
   try { return validateDaytonaKey(saved); } catch { return ""; }
+}
+export function resetCookieChoice() {
+  try {
+    writeCookie(CONSENT_COOKIE, "", 0);
+    window.localStorage.removeItem(FALLBACK_KEY);
+  } catch { /* Best effort when storage is blocked. */ }
+  sessionChoice = "unset";
+  notify();
 }
 export function rememberDaytonaKey(userId: string, key: string): boolean {
   if (!userId || cookieChoice() !== "accepted" || window.location.protocol !== "https:") return false;
