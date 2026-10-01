@@ -6,6 +6,7 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { createBrowserAuthStorage } from "@/lib/authStorage";
 import { ConvexReactClient } from "convex/react";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
+import { ThemeProvider } from "next-themes";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
@@ -116,6 +117,7 @@ createRoot(document.getElementById("root")!).render(
       <ToolbarErrorBoundary>
         <VlyToolbar />
       </ToolbarErrorBoundary>
+      <ThemeProvider attribute="class" storageKey="orbit-theme" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
       <ConvexAuthProvider client={convex} storage={authStorage}>
         <BrowserRouter>
           <RouteSyncer />
@@ -141,6 +143,7 @@ createRoot(document.getElementById("root")!).render(
         <CookiePreferences />
         <Toaster />
       </ConvexAuthProvider>
+      </ThemeProvider>
     </RootErrorBoundary>
   </StrictMode>,
 );

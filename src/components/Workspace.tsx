@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { toast } from "sonner";
 import { BUILD_PROMPT, PLAN_PROMPT, discoverModels, errorText, extractArtifacts, featuredModels, getPuter, loadPuter, modelPick, previewDocument, responseLinks, sortModels, supportsWebSearch, type Artifact, type Model, type PuterSDK } from "@/lib/puter";
 import CloudSandbox from "@/components/CloudSandbox";
+import ThemeToggle from "@/components/ThemeToggle";
 import { applyArtifacts, applyPlan, parseConversations, restoreCheckpoint, SAMPLE_HTML, toggleTask, uid, type Conversation, type Message } from "@/lib/workspace";
 
 const examples = [
@@ -239,7 +240,7 @@ export default function Workspace() {
       </div>
     </aside>
     <main className="orbit-main">
-      <header className="workspace-header"><div className="header-left"><button className="mobile-menu icon-button" aria-label="Open menu" onClick={() => setMobileNav(v => !v)}><Menu size={20} /></button><span className="header-title">Personal workspace</span><ChevronRight size={13} /><span className="header-subtitle">{current ? current.title : "New conversation"}</span></div><div className="header-actions"><button className={`header-connect ${username ? "connected" : ""}`} disabled={connecting || busy || sdkLoading} onClick={() => username ? setConnectionOpen(true) : void connect()}><span className={`status-dot ${username ? "connected" : ""}`} />{username ? username : "Connect Puter"}</button><button className={`icon-button ${rightOpen ? "selected" : ""}`} aria-label="Toggle workspace panel" onClick={() => setRightOpen(v => !v)}><Code2 size={18} /></button><button className="icon-button" aria-label="Workspace information" onClick={() => setHelp(true)}><MoreHorizontal size={20} /></button></div></header>
+      <header className="workspace-header"><div className="header-left"><button className="mobile-menu icon-button" aria-label="Open menu" onClick={() => setMobileNav(v => !v)}><Menu size={20} /></button><span className="header-title">Personal workspace</span><ChevronRight size={13} /><span className="header-subtitle">{current ? current.title : "New conversation"}</span></div><div className="header-actions"><button className={`header-connect ${username ? "connected" : ""}`} disabled={connecting || busy || sdkLoading} onClick={() => username ? setConnectionOpen(true) : void connect()}><span className={`status-dot ${username ? "connected" : ""}`} />{username ? username : "Connect Puter"}</button><button className={`icon-button ${rightOpen ? "selected" : ""}`} aria-label="Toggle workspace panel" onClick={() => setRightOpen(v => !v)}><Code2 size={18} /></button><button className="icon-button" aria-label="Workspace information" onClick={() => setHelp(true)}><MoreHorizontal size={20} /></button><ThemeToggle /></div></header>
       <div className="workspace-body">
         <section className="chat-pane">
           <div className="chat-scroll">

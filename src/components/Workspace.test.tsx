@@ -90,6 +90,7 @@ const { createRoot } = await import("react-dom/client");
 const { BrowserRouter } = await import("react-router");
 const { default: Workspace } = await import("./Workspace");
 const { default: CookiePreferences } = await import("./CookiePreferences");
+const { ThemeProvider } = await import("next-themes");
 const { cookieChoice, setCookieChoice, rememberedDaytonaKey, rememberDaytonaKey, forgetDaytonaKey } = await import("../lib/browserCookies");
 
 const button = (name: string) => {
@@ -493,6 +494,65 @@ test("Daytona cookies are host-only, secure, strict, seven-day cookies and unava
     Object.defineProperty(globalThis, "window", { value: oldWindow, configurable: true, writable: true });
     Object.defineProperty(globalThis, "document", { value: oldDocument, configurable: true, writable: true });
     void isolated.happyDOM.close();
+  }
+});
+
+test("top-right theme toggle applies dark mode to the whole site and restores the preference", async () => {
+  const container = browser.document.createElement("div"); browser.document.body.appendChild(container);
+  let root = createRoot(container as unknown as HTMLElement);
+  browser.localStorage.removeItem("orbit-theme");
+  const stylesheet = browser.document.createElement("style");
+  stylesheet.textContent = await Bun.file(new URL("../index.css", import.meta.url).pathname).text();
+  browser.document.head.appendChild(stylesheet);
+  const renderWorkspace = () => <ThemeProvider attribute="class" storageKey="orbit-theme" defaultTheme="light" enableSystem={false}><BrowserRouter><Workspace /><CookiePreferences /></BrowserRouter></ThemeProvider>;
+  try {
+    await act(async () => { root.render(renderWorkspace()); });
+    expect(browser.document.documentElement.classList.contains("light")).toBe(true);
+    expect(button("Switch to dark mode").closest(".header-actions")).not.toBeNull();
+    expect(button("Switch to dark mode").getAttribute("aria-pressed")).toBe("false");
+    await click("Switch to dark mode");
+    expect(browser.document.documentElement.classList.contains("dark")).toBe(true);
+    expect(browser.document.documentElement.style.colorScheme).toBe("dark");
+    expect(browser.localStorage.getItem("orbit-theme")).toBe("dark");
+    const shell = browser.document.querySelector(".orbit-shell")!;
+    const header = browser.document.querySelector(".workspace-header")!;
+    expect(browser.getComputedStyle(shell).backgroundColor).toBe("#121c19");
+    expect(browser.getComputedStyle(header).backgroundColor).toBe("#18251fe6");
+    expect(button("Switch to light mode").getAttribute("aria-pressed")).toBe("true");
+    await click("Workspace settings");
+    expect(browser.document.querySelector(".orbit-dialog")).not.toBeNull();
+    await click("Close");
+    await act(async () => { root.unmount(); });
+    root = createRoot(container as unknown as HTMLElement);
+    await act(async () => { root.render(renderWorkspace()); });
+    expect(browser.document.documentElement.classList.contains("dark")).toBe(true);
+    expect(button("Switch to light mode")).not.toBeNull();
+    await click("Switch to light mode");
+    expect(browser.document.documentElement.classList.contains("dark")).toBe(false);
+    expect(browser.localStorage.getItem("orbit-theme")).toBe("light");
+    expect(browser.getComputedStyle(browser.document.querySelector(".orbit-shell")!).backgroundColor).toBe("#fafbf7");
+  } finally {
+    await act(async () => { root.unmount(); }); container.remove();
+    stylesheet.remove();
+    browser.localStorage.removeItem("orbit-theme"); browser.document.documentElement.classList.remove("dark");
+  }
+});
+
+test("theme toggle remains usable when browser preference storage is blocked", async () => {
+  const container = browser.document.createElement("div"); browser.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  const storage = Object.getOwnPropertyDescriptor(globalThis, "localStorage")!;
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, get: () => { throw new Error("Storage blocked"); } });
+  try {
+    await act(async () => { root.render(<ThemeProvider attribute="class" storageKey="orbit-theme" defaultTheme="light" enableSystem={false}><BrowserRouter><Workspace /></BrowserRouter></ThemeProvider>); });
+    await click("Switch to dark mode");
+    expect(browser.document.documentElement.classList.contains("dark")).toBe(true);
+    await click("Switch to light mode");
+    expect(browser.document.documentElement.classList.contains("dark")).toBe(false);
+  } finally {
+    await act(async () => { root.unmount(); }); container.remove();
+    Object.defineProperty(globalThis, "localStorage", storage);
+    browser.document.documentElement.classList.remove("dark");
   }
 });
 
