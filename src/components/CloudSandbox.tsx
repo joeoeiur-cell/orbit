@@ -6,14 +6,17 @@ import { AlertCircle, ArrowRight, Download, ExternalLink, Loader2, Play, Server,
 import { Button } from "@/components/ui/button";
 import { errorText, type Artifact } from "@/lib/puter";
 import { validateDaytonaKey } from "@/lib/sandbox";
+import { forgetDaytonaKey, openCookiePreferences, rememberDaytonaKey, useCookieChoice, useRememberedDaytonaKey } from "@/lib/browserCookies";
 
 export default function CloudSandbox(props: { projectId: string; files: Artifact[]; onImport: (file: Artifact) => void }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
+  const user = useQuery(api.users.currentUser, isAuthenticated ? {} : "skip");
   if (isLoading) return <div className="panel-empty"><Loader2 className="animate-spin" /><p>Checking workspace sign-in…</p></div>;
   if (!isAuthenticated) return <div className="panel-empty vm-signin"><Server size={32} /><h3>A real computer for your ideas.</h3><p>Cloud execution requires an Orbit workspace sign-in, separate from your Puter connection.</p><Link className="vm-auth-link" to="/auth?returnTo=%2Fdashboard%3Fpanel%3Dvm">Sign in to your workspace <ArrowRight size={14} /></Link></div>;
-  return <SandboxControls {...props} />;
+  if (!user) return <div className="panel-empty"><Loader2 className="animate-spin" /><p>Loading your workspace account…</p></div>;
+  return <SandboxControls key={user._id} {...props} userId={user._id} />;
 }
-function SandboxControls({ projectId, files, onImport }: { projectId: string; files: Artifact[]; onImport: (file: Artifact) => void }) {
+function SandboxControls({ projectId, files, onImport, userId }: { projectId: string; files: Artifact[]; onImport: (file: Artifact) => void; userId: string }) {
   const sandbox = useQuery(api.sandboxes.current, { projectId });
   const configuration = useAction(api.daytona.configuration);
   const create = useAction(api.daytona.create);
@@ -26,6 +29,10 @@ function SandboxControls({ projectId, files, onImport }: { projectId: string; fi
   const [keyDraft, setKeyDraft] = useState("");
   const [hasSessionKey, setHasSessionKey] = useState(false);
   const sessionKey = useRef("");
+  const cookieConsent = useCookieChoice();
+  const savedKey = useRememberedDaytonaKey(userId);
+  const hasKey = Boolean(savedKey) || hasSessionKey;
+  const [keyNotice, setKeyNotice] = useState("");
   const [consent, setConsent] = useState(false);
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
@@ -51,8 +58,11 @@ function SandboxControls({ projectId, files, onImport }: { projectId: string; fi
   const deleting = sandbox?.status === "deleting" && !expired;
   const active = live || creating || deleting;
   const needsPersonalKey = active && sandbox?.credentialSource === "personal";
-  const credentialsReady = active ? (needsPersonalKey ? hasSessionKey : Boolean(configured)) : (hasSessionKey || Boolean(configured));
-  const credentials = () => (!active || needsPersonalKey) && sessionKey.current ? { apiKey: sessionKey.current } : {};
+  const credentialsReady = active ? (needsPersonalKey ? hasKey : Boolean(configured)) : (hasKey || Boolean(configured));
+  const credentials = () => {
+    const key = savedKey || sessionKey.current;
+    return (!active || needsPersonalKey) && key ? { apiKey: key } : {};
+  };
   const addLog = (text: string) => setLogs(previous => [...previous.slice(-19), text.slice(0, 60000)]);
   const perform = async (name: string, fn: () => Promise<void>) => {
     if (operation.current || !credentialsReady) return;
@@ -66,12 +76,14 @@ function SandboxControls({ projectId, files, onImport }: { projectId: string; fi
     <div className="vm-heading"><span className="vm-emblem"><Server size={21} /></span><div><strong>Cloud sandbox</strong><p>Linux execution · powered by Daytona</p></div><span className={`vm-status ${live ? "live" : ""}`}>{live ? "Running" : creating ? "Starting" : deleting ? "Deleting" : expired ? "Expired" : "Offline"}</span></div>
     <div className="vm-specs"><span><ShieldCheck size={12} /> Network blocked</span><span>5-minute lifetime</span><span>One sandbox per user</span></div>
     {error && <div className="connection-error" role="alert"><AlertCircle size={15} /><p>{error}</p></div>}
-    <div className="vm-setup vm-key-setup"><div className="vm-key-heading"><ShieldCheck size={16} /><strong>Your Daytona connection</strong><span>Session only</span></div>
-      {hasSessionKey ? <><p role="status">Key ready for this session. Daytona will verify it when you start or use a sandbox.</p><Button variant="outline" disabled={Boolean(pending)} onClick={() => { sessionKey.current = ""; setHasSessionKey(false); setKeyDraft(""); setConsent(false); setPreviewUrl(""); }}>Forget session key</Button></> : <form className="vm-key-form" autoComplete="off" onSubmit={e => { e.preventDefault(); if (pending) return; try { sessionKey.current = validateDaytonaKey(keyDraft); setKeyDraft(""); setHasSessionKey(true); setConsent(false); setError(""); } catch (e) { setError(errorText(e)); } }}><label htmlFor="daytona-session-key">Daytona API key</label><input id="daytona-session-key" aria-label="Daytona API key" type="password" placeholder="dtn_…" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={504} value={keyDraft} disabled={Boolean(pending)} onChange={e => setKeyDraft(e.target.value)} aria-describedby="daytona-key-privacy" /><Button type="submit" disabled={!keyDraft.trim() || Boolean(pending)}>Use key for this session</Button></form>}
-      <p id="daytona-key-privacy">Kept only in this open panel’s memory and sent to Orbit’s server for Daytona requests. Not saved to browser storage or Orbit’s database. Re-enter after closing the panel or refreshing. Adding a key does not start compute.</p>
-      {needsPersonalKey && !hasSessionKey && <p className="vm-key-warning">Re-enter the same key that created this sandbox to run commands or delete it. Its automatic five-minute expiry still applies.</p>}
-      {configured && !hasSessionKey && !needsPersonalKey && <p>The project connection is also available. Enter a personal key to use your own Daytona credits for a new sandbox.</p>}
-      {active && !needsPersonalKey && hasSessionKey && <p>This existing sandbox uses the project connection. Your personal key will be used for the next sandbox.</p>}
+    <div className="vm-setup vm-key-setup"><div className="vm-key-heading"><ShieldCheck size={16} /><strong>Your Daytona connection</strong><span>{savedKey ? "Remembered" : "Session only"}</span></div>
+      {hasKey ? <><p role="status">{savedKey ? "Key remembered in this browser for up to 7 days." : "Key ready for this session."} Daytona will verify it when you start or use a sandbox.</p>{!savedKey && cookieConsent === "accepted" && <Button variant="outline" disabled={Boolean(pending)} onClick={() => { const saved = rememberDaytonaKey(userId, sessionKey.current); if (saved) { sessionKey.current = ""; setHasSessionKey(false); } setKeyNotice(saved ? "" : "Your browser blocked saving the cookie. Your key is still session-only."); }}>Remember this key in a cookie</Button>}<Button variant="outline" disabled={Boolean(pending)} onClick={() => { forgetDaytonaKey(userId); sessionKey.current = ""; setHasSessionKey(false); setKeyDraft(""); setConsent(false); setPreviewUrl(""); setKeyNotice(""); }}>{savedKey ? "Forget saved key" : "Forget session key"}</Button></> : <form className="vm-key-form" autoComplete="off" onSubmit={e => { e.preventDefault(); if (pending) return; try { const key = validateDaytonaKey(keyDraft); const saved = cookieConsent === "accepted" && rememberDaytonaKey(userId, key); sessionKey.current = saved ? "" : key; setKeyDraft(""); setHasSessionKey(!saved); setConsent(false); setError(""); setKeyNotice(cookieConsent === "accepted" && !saved ? "Your browser blocked saving the cookie. Your key is still session-only." : ""); } catch (e) { setError(errorText(e)); } }}><label htmlFor="daytona-session-key">Daytona API key</label><input id="daytona-session-key" aria-label="Daytona API key" type="password" placeholder="dtn_…" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={504} value={keyDraft} disabled={Boolean(pending)} onChange={e => setKeyDraft(e.target.value)} aria-describedby="daytona-key-privacy" /><Button type="submit" disabled={!keyDraft.trim() || Boolean(pending)}>{cookieConsent === "accepted" ? "Save key in browser cookie" : "Use key for this session"}</Button></form>}
+      <p id="daytona-key-privacy">{cookieConsent === "accepted" ? "You accepted optional cookies. New keys are saved for 7 days in a Secure, SameSite cookie scoped to this browser and Orbit account. Site scripts can read the key; do not save it on a shared device." : "Optional cookies are off. The key stays only in this open panel’s memory; re-enter after closing it or refreshing."} Keys are sent to Orbit’s server for Daytona requests, never stored in Orbit’s database. Adding or restoring a key does not start compute.</p>
+      {keyNotice && <p className="vm-key-warning" role="status">{keyNotice}</p>}
+      <button className="vm-cookie-settings" type="button" onClick={openCookiePreferences}>Change cookie preferences</button>
+      {needsPersonalKey && !hasKey && <p className="vm-key-warning">Re-enter the same key that created this sandbox to run commands or delete it. Its automatic five-minute expiry still applies.</p>}
+      {configured && !hasKey && !needsPersonalKey && <p>The project connection is also available. Enter a personal key to use your own Daytona credits for a new sandbox.</p>}
+      {active && !needsPersonalKey && hasKey && <p>This existing sandbox uses the project connection. Your personal key will be used for the next sandbox.</p>}
       <a href="https://app.daytona.io/dashboard/keys" target="_blank" rel="noopener noreferrer">Manage Daytona keys <ExternalLink size={12} /></a><p>Daytona advertises a no-card trial; usage is metered. Paid billing can incur charges.</p><a href="https://www.daytona.io/pricing" target="_blank" rel="noopener noreferrer">Review pricing <ExternalLink size={12} /></a>
     </div>
     {!live && !creating && !deleting && <div className="vm-start-card"><Terminal size={26} /><h3>From code to execution.</h3><p>Start an isolated Linux sandbox to run commands and test your project. Nothing runs automatically.</p><label className="vm-consent"><input type="checkbox" aria-label="Confirm Daytona compute usage" checked={consent} disabled={Boolean(pending)} onChange={e => setConsent(e.target.checked)} /><span>I understand this uses the connected Daytona account’s credits and may incur charges if paid billing is enabled. The sandbox and its files are deleted after five minutes or when I delete it.</span></label><Button disabled={!consent || !credentialsReady || Boolean(pending) || sandbox === undefined} onClick={() => void perform("Starting sandbox", async () => { setConsent(false); await create({ projectId, consent: true, ...credentials() }); if (mounted.current) { setLogs([]); setPreviewUrl(""); addLog("Sandbox started. No commands have been executed. Files must be synced explicitly."); } })}>{pending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Start cloud sandbox</Button></div>}

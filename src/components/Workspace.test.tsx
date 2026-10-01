@@ -27,6 +27,7 @@ let sentModel = "";
 let searchTools: { type: "web_search" }[] | undefined;
 let planReply = false;
 let workspaceSignedIn = false;
+let workspaceUserId = "test-orbit-user";
 let vmConfigured = true;
 let vmCalls: string[] = [];
 let vmRow: { id: string; status: string; expiresAt: number; workDir: string; expired: boolean; credentialSource: "personal" | "project" } | null = null;
@@ -35,7 +36,7 @@ let vmRequestKey: unknown;
 const convexReact = await import("convex/react");
 mock.module("convex/react", () => ({ ...convexReact,
   useConvexAuth: () => ({ isAuthenticated: workspaceSignedIn, isLoading: false }),
-  useQuery: () => vmRow,
+  useQuery: (reference: FunctionReference<"query">) => getFunctionName(reference) === "users:currentUser" ? (workspaceSignedIn ? { _id: workspaceUserId } : null) : vmRow,
   useAction: (reference: FunctionReference<"action">) => async (args: Record<string, unknown>) => {
     const name = getFunctionName(reference);
     vmCalls.push(name);
@@ -88,6 +89,8 @@ const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { BrowserRouter } = await import("react-router");
 const { default: Workspace } = await import("./Workspace");
+const { default: CookiePreferences } = await import("./CookiePreferences");
+const { cookieChoice, setCookieChoice, rememberedDaytonaKey, rememberDaytonaKey, forgetDaytonaKey } = await import("../lib/browserCookies");
 
 const button = (name: string) => {
   const result = Array.from(browser.document.querySelectorAll("button")).find(b => b.getAttribute("aria-label") === name || b.textContent?.trim() === name);
@@ -376,9 +379,120 @@ test("personal Daytona keys stay session-only, require separate compute consent,
     await click("Delete cloud sandbox"); expect(vmRequestKey).toBe(fakeSessionKey);
     for (let i = 0; i < browser.localStorage.length; i++) expect(browser.localStorage.getItem(browser.localStorage.key(i)!)).not.toContain(fakeSessionKey);
     expect(browser.sessionStorage.length).toBe(0);
+    expect(browser.document.cookie).not.toContain(fakeSessionKey);
   } finally {
     workspaceSignedIn = false; vmConfigured = true; vmRow = null; vmRequestKey = undefined;
     await act(async () => { root.unmount(); }); container.remove();
+  }
+});
+
+test("first-visit cookie banner offers Accept and Decline without pre-saving a key", async () => {
+  const container = browser.document.createElement("div"); browser.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  try {
+    await act(async () => { root.render(<CookiePreferences />); });
+    expect(browser.document.querySelector(".cookie-banner")?.textContent).toContain("not HttpOnly");
+    expect(browser.document.cookie).toBe("");
+    expect(cookieChoice()).toBe("unset");
+    await click("Decline cookies");
+    expect(cookieChoice()).toBe("declined");
+    expect(browser.document.querySelector(".cookie-banner")).toBeNull();
+    expect(browser.document.cookie).toContain("__Host-orbit-cookie-choice=declined");
+    expect(rememberDaytonaKey(workspaceUserId, fakeSessionKey)).toBe(false);
+    expect(browser.document.cookie).not.toContain(fakeSessionKey);
+    await click("Cookie settings");
+    await click("Accept cookies");
+    expect(cookieChoice()).toBe("accepted");
+    expect(browser.document.cookie).not.toContain(fakeSessionKey);
+  } finally {
+    await act(async () => { root.unmount(); }); container.remove();
+  }
+});
+
+test("accepted cookies restore keys across panel remounts, isolate account selection, and never start compute", async () => {
+  const container = browser.document.createElement("div"); browser.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  workspaceSignedIn = true; workspaceUserId = "cookie-user-one"; vmConfigured = false; vmRow = null; vmCalls = [];
+  try {
+    await act(async () => { setCookieChoice("accepted"); root.render(<BrowserRouter><Workspace /><CookiePreferences /></BrowserRouter>); });
+    expect(browser.document.querySelector(".cookie-banner")).toBeNull();
+    await click("New conversation"); await click("Cloud sandbox");
+    await type('[aria-label="Daytona API key"]', fakeSessionKey); await click("Save key in browser cookie");
+    expect(rememberedDaytonaKey("cookie-user-one")).toBe(fakeSessionKey);
+    expect(rememberedDaytonaKey("cookie-user-two")).toBe("");
+    expect(browser.document.querySelector(".vm-key-heading")?.textContent).toContain("Remembered");
+    expect(browser.document.body.textContent).not.toContain(fakeSessionKey);
+    expect(vmCalls).not.toContain("daytona:create");
+    expect((button("Start cloud sandbox") as unknown as HTMLButtonElement).disabled).toBe(true);
+    await click("Close workspace"); await click("Cloud sandbox");
+    expect(browser.document.querySelector('[aria-label="Daytona API key"]')).toBeNull();
+    expect(browser.document.querySelector(".vm-key-setup")?.textContent).toContain("Key remembered");
+    workspaceUserId = "cookie-user-two";
+    await click("Close workspace"); await click("Cloud sandbox");
+    expect((browser.document.querySelector('[aria-label="Daytona API key"]') as unknown as HTMLInputElement).value).toBe("");
+    workspaceUserId = "cookie-user-one";
+    await click("Close workspace"); await click("Cloud sandbox");
+    await click("Forget saved key");
+    expect(rememberedDaytonaKey("cookie-user-one")).toBe("");
+    expect(browser.document.cookie).not.toContain(fakeSessionKey);
+    await type('[aria-label="Daytona API key"]', fakeSessionKey); await click("Save key in browser cookie");
+    await click("Change cookie preferences"); await click("Decline cookies");
+    expect(rememberedDaytonaKey("cookie-user-one")).toBe("");
+    expect(browser.document.cookie).not.toContain(fakeSessionKey);
+    expect(browser.document.querySelector('[aria-label="Daytona API key"]')).not.toBeNull();
+    expect((button("Start cloud sandbox") as unknown as HTMLButtonElement).disabled).toBe(true);
+    expect(vmCalls).not.toContain("daytona:create");
+    for (let i = 0; i < browser.localStorage.length; i++) expect(browser.localStorage.getItem(browser.localStorage.key(i)!)).not.toContain(fakeSessionKey);
+  } finally {
+    workspaceSignedIn = false; workspaceUserId = "test-orbit-user"; vmConfigured = true; vmRow = null;
+    await act(async () => { setCookieChoice("declined"); root.unmount(); }); container.remove();
+  }
+});
+
+test("Daytona cookies are host-only, secure, strict, seven-day cookies and unavailable on HTTP", () => {
+  const isolated = new Window({ url: "https://cookies.orbit.test/" });
+  const oldWindow = globalThis.window;
+  const oldDocument = globalThis.document;
+  const writes: string[] = [];
+  let prototype: object | null = isolated.document;
+  let descriptor: PropertyDescriptor | undefined;
+  while (prototype && !descriptor) { descriptor = Object.getOwnPropertyDescriptor(prototype, "cookie"); prototype = Object.getPrototypeOf(prototype); }
+  if (!descriptor?.get || !descriptor.set) throw new Error("Cookie accessor not found");
+  const getCookie = descriptor.get;
+  const setCookie = descriptor.set;
+  Object.defineProperty(isolated.document, "cookie", {
+    configurable: true,
+    get: () => getCookie.call(isolated.document),
+    set: (value: string) => { writes.push(value); setCookie.call(isolated.document, value); },
+  });
+  Object.defineProperty(globalThis, "window", { value: isolated, configurable: true, writable: true });
+  Object.defineProperty(globalThis, "document", { value: isolated.document, configurable: true, writable: true });
+  try {
+    setCookieChoice("accepted");
+    expect(rememberDaytonaKey("owner", fakeSessionKey)).toBe(true);
+    const write = writes.find(value => value.startsWith("__Host-orbit-daytona-owner="))!;
+    expect(write).toContain("Max-Age=604800"); expect(write).toContain("Path=/");
+    expect(write).toContain("Secure"); expect(write).toContain("SameSite=Strict"); expect(write).not.toContain("Domain=");
+    forgetDaytonaKey("owner"); expect(rememberedDaytonaKey("owner")).toBe("");
+    expect(writes[writes.length - 1]).toContain("Max-Age=0");
+    isolated.location.href = "http://cookies.orbit.test/";
+    const count = writes.length;
+    expect(rememberDaytonaKey("owner", fakeSessionKey)).toBe(false);
+    expect(writes.length).toBe(count);
+    isolated.location.href = "https://cookies.orbit.test/";
+    isolated.document.cookie = "__Host-orbit-cookie-choice=; Max-Age=0; Path=/; Secure; SameSite=Strict";
+    expect(cookieChoice()).toBe("unset");
+    // A browser that rejects cookies still honors the choice for this visit.
+    Object.defineProperty(isolated.document, "cookie", { configurable: true, get: () => "", set: () => {} });
+    expect(setCookieChoice("accepted")).toBe(false);
+    expect(cookieChoice()).toBe("accepted");
+    expect(rememberDaytonaKey("owner", fakeSessionKey)).toBe(false);
+    expect(rememberedDaytonaKey("owner")).toBe("");
+    setCookieChoice("declined");
+  } finally {
+    Object.defineProperty(globalThis, "window", { value: oldWindow, configurable: true, writable: true });
+    Object.defineProperty(globalThis, "document", { value: oldDocument, configurable: true, writable: true });
+    void isolated.happyDOM.close();
   }
 });
 

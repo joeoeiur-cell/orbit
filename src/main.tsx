@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/sonner";
+import CookiePreferences from "@/components/CookiePreferences";
 import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
@@ -135,6 +136,7 @@ createRoot(document.getElementById("root")!).render(
             </Routes>
           </Suspense>
         </BrowserRouter>
+        <CookiePreferences />
         <Toaster />
       </ConvexAuthProvider>
     </RootErrorBoundary>
