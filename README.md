@@ -1,6 +1,6 @@
 # Orbit
 
-A multi-model chat and build workspace running on Puter. Chat with different AI models in one place, generate artifacts with safe sandboxed previews, switch between chat and Plan mode, search the web, and run generated code in Daytona cloud sandboxes.
+A multi-model chat and build workspace running on Puter. Chat with different AI models in one place, generate artifacts with safe sandboxed previews, switch between chat and Plan mode, search the web, and run Python locally in your browser or commands in optional Daytona cloud sandboxes.
 
 ## Features
 
@@ -8,7 +8,8 @@ A multi-model chat and build workspace running on Puter. Chat with different AI 
 - **Artifacts** — generated app previews render in isolated, safe iframes with their own theme.
 - **Plan mode** — plan before building; switch modes in the workspace.
 - **Web search** — ground conversations with live search results.
-- **Cloud sandboxes** — bring your own Daytona API key to create and execute code in cloud VMs. Keys stay in your browser (session-only by default, or remembered for 7 days in a cookie after you accept cookies). Plaintext keys are never sent to or stored on the server — only a SHA-256 fingerprint is kept to bind each sandbox to the key that created it.
+- **Local Python** — no new account or API key. A pinned Pyodide runtime is served with the app and loaded on demand into an opaque-origin iframe worker. Each run gets the current chat’s files, can read/create/edit UTF-8 files, and returns results to the Files panel. Enable AI execution per chat in Build mode for up to three steps and model follow-ups. Python standard library only; no shell, pip, Node, or network. Files persist in browser history; variables reset after each run. Limits: 15 seconds per step, 40 files, 500 KB total, 20,000 output characters. Export important work.
+- **Cloud sandboxes** — bring your own Daytona API key to create and execute code in cloud VMs. Keys stay in your browser (session-only by default, or remembered for 7 days in a cookie after you accept cookies). Plaintext keys are sent to authenticated server actions for provider requests but never stored in Orbit’s database or injected into the sandbox — only a SHA-256 fingerprint is kept to bind each sandbox to the key that created it.
 - **Cookie consent** — explicit accept/decline banner; declining wipes stored keys. If cookies are blocked, choices fall back to localStorage so the banner does not nag.
 - **Light/dark theme** — self-managed theme store with persistence, no extra provider.
 
@@ -35,7 +36,10 @@ Environment variables (`CONVEX_DEPLOYMENT`, `VITE_CONVEX_URL`, auth keys) are pr
 ## Security notes
 
 - Never commit `.env*` files; only `.env.example` is tracked.
-- Daytona keys entered in the UI are validated, stored only in browser cookies/localStorage with your consent, and hashed server-side for credential binding.
+- Daytona keys entered in the UI are validated, kept in panel memory or browser cookies with consent, and hashed server-side for credential binding. The consent choice, not the key, may use a localStorage fallback.
+- Local execution uses `sandbox="allow-scripts"` without `allow-same-origin`, a network-denying CSP, source/channel validation, bounded text transfers, and worker termination after runs. It is not a hardened server VM or a defense against resource exhaustion: arbitrary Python consumes the user’s device resources.
+- AI local execution sends supplied project files and execution results to the selected Puter model and can make additional metered model requests. Ordinary Python examples are not executed; only explicit `orbit-python` requests run after opt-in, never in Plan mode.
+- Browser smoke test against an already-running preview: `bun src/lib/localRuntime.e2e.ts` (requires Playwright Chromium via `bunx playwright install chromium` and its host dependencies).
 - Rotate any API key that has ever been pasted into a chat or screenshot.
 
 ---

@@ -26,6 +26,8 @@ let sent: ChatMessage[] = [];
 let sentModel = "";
 let searchTools: { type: "web_search" }[] | undefined;
 let planReply = false;
+let localReply: "none" | "run" | "limit" = "none";
+let localModelCalls = 0;
 let workspaceSignedIn = false;
 let workspaceUserId = "test-orbit-user";
 let vmConfigured = true;
@@ -67,6 +69,11 @@ const sdk: PuterSDK = {
     chat: async (messages, options) => {
       sent = messages; sentModel = options.model; searchTools = options.tools;
       return (async function* () {
+        if (localReply !== "none") {
+          localModelCalls++;
+          yield { type: "text", text: localReply === "limit" || localModelCalls === 1 ? '```orbit-python\nfrom pathlib import Path\nprint(Path("input.txt").read_text())\nPath("result.txt").write_text("created by Python")\n```' : "Read the input and created result.txt using the execution results." };
+          return;
+        }
         if (planReply) {
           yield { type: "text", text: 'Plan first. [Provider docs](https://example.com/docs)\n```json\n{"tasks":[{"text":"Design the interface","done":true}],"files":[{"name":"must-not-write.txt","content":"Forbidden"}]}\n```' };
           return;
@@ -555,6 +562,52 @@ test("theme toggle remains usable when browser preference storage is blocked", a
     await act(async () => { root.unmount(); }); container.remove();
     Object.defineProperty(globalThis, "localStorage", storage);
     browser.document.documentElement.classList.remove("dark");
+  }
+});
+
+test("AI local execution requires opt-in, returns files to the model, stays out of Plan mode and stops after three steps", async () => {
+  const { LocalPython } = await import("../lib/localRuntime");
+  const original = LocalPython.prototype.run;
+  const calls: { code: string; files: unknown[] }[] = [];
+  LocalPython.prototype.run = async (code, files) => {
+    calls.push({ code, files });
+    return { output: "input contents\n", files: [...files, { name: "result.txt", content: "created by Python" }] };
+  };
+  const container = browser.document.createElement("div"); browser.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  signedIn = true; localReply = "run"; localModelCalls = 0;
+  try {
+    await act(async () => { root.render(<BrowserRouter><Workspace /></BrowserRouter>); });
+    await click("New conversation");
+    await type('textarea[aria-label="Message"]', "Please run Python");
+    await click("Send message");
+    expect(calls).toHaveLength(0);
+    await click("Local execution");
+    await act(async () => { (browser.document.querySelector('[aria-label="Allow AI local Python execution"]') as unknown as HTMLInputElement).click(); });
+    localModelCalls = 0;
+    await type('textarea[aria-label="Message"]', "Read my files and create a result");
+    await click("Send message");
+    expect(calls).toHaveLength(1);
+    expect(localModelCalls).toBe(2);
+    expect(sent[0].content).toContain("Local Python execution is enabled");
+    expect(sent[sent.length - 1].content).toContain("LOCAL EXECUTION RESULT");
+    expect(sent[sent.length - 1].content).toContain("created by Python");
+    expect(browser.localStorage.getItem("orbit-chats:tester")).toContain("result.txt");
+    await click("Plan mode");
+    localModelCalls = 0;
+    await type('textarea[aria-label="Message"]', "Plan only"); await click("Send message");
+    expect(calls).toHaveLength(1);
+    expect(sent[0].content).not.toContain("Local Python execution is enabled");
+    await click("Build mode"); localReply = "limit"; localModelCalls = 0;
+    await type('textarea[aria-label="Message"]', "Try repeated steps"); await click("Send message");
+    expect(calls).toHaveLength(4);
+    expect(localModelCalls).toBe(4);
+    expect(browser.document.body.textContent).toContain("Local execution limit reached");
+    await click("New conversation");
+    expect((browser.document.querySelector('[aria-label="Allow AI local Python execution"]') as unknown as HTMLInputElement).checked).toBe(false);
+  } finally {
+    localReply = "none"; LocalPython.prototype.run = original;
+    await act(async () => { root.unmount(); }); container.remove();
   }
 });
 
